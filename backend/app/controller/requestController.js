@@ -264,10 +264,11 @@ export const bulkUpload = async (req, res) => {
   export const sendtoofficer = async (req,res) =>{
     const { requestId,officerId,officerName } = req.body;
     const request = await Request.findById(requestId);
-     console.log(request);
+    //  console.log(request);
      request.checkofficer.officerId=officerId;
      request.checkofficer.officerName=officerName;
      request.status = 'Waited for Signature';
+     request.actions= 'Draft';
      await request.save();
     res.status(200).json("Sended to Officer");
   }
@@ -279,3 +280,33 @@ export const bulkUpload = async (req, res) => {
     await request.save();
     res.status(200).json("deleted");
   }
+
+  export const cloneRequest = async (req, res) => {
+    try {
+      const { requestId } = req.body;
+      console.log("Request ID to clone:", requestId);
+  
+      // Use findById to get a single document
+      const originalRequest = await Request.findById(requestId);
+  
+      if (!originalRequest) {
+        return res.status(404).json({ message: "Original request not found" });
+      }
+  
+      // Convert to plain object and remove unwanted fields
+      const { _id, createdAt, updatedAt, status, checkofficer, deleteFlag, ...requestData } = originalRequest._doc;
+  
+      // Create a new request with cloned data
+      const clonedRequest = new Request(requestData);
+      await clonedRequest.save();
+  
+      return res.status(201).json({
+        message: "Request cloned successfully",
+        clonedRequest,
+      });
+    } catch (error) {
+      console.error("Clone request error:", error);
+      return res.status(500).json({ message: "Internal server error" });
+    }
+  };
+  

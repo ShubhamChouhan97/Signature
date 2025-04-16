@@ -75,25 +75,18 @@ const RequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Unsigned','Delegated','Ready for Dispatch','Waited for Signature'],
-    default: 'Unsigned',
+    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature'],
+    default: 'Draft',
   },
   deleteFlag:{
     type:Boolean,
     default:false
   },
-  actions: [
-    {
-      type: {
+  actions: {
         type: String,
-        enum: ['Created', 'Updated', 'Signed', 'Rejected'],
-      },
-      performedAt: {
-        type: String,
-        default: getCurrent12HourTime,
-      },
-    }
-  ]
+        enum: ['Draft', 'Pending', 'Signed', 'Submited'],
+        default: 'Draft',
+    },
 });
 
 const Request = mongoose.model('Request', RequestSchema);

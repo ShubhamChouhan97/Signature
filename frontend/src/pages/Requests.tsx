@@ -9,8 +9,10 @@ import {
   Select,
 } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
-import { mainClient } from "../store";
+import { mainClient, useAppStore } from "../store";
 import { useNavigate } from "react-router";
+import { rolesMap } from '../libs/statusMap';
+import { Session } from 'inspector/promises';
 
 interface Request {
   _id: string;
@@ -18,7 +20,8 @@ interface Request {
   numberOfDocuments: number;
   rejectedDocuments: number;
   createdAt: string;
-  status: 'Unsigned' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature';
+  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature';
+  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' ;
 }
 
 const actionButtonColors: Record<string, string> = {
@@ -28,7 +31,8 @@ const actionButtonColors: Record<string, string> = {
   Sign: 'bg-indigo-600 hover:bg-indigo-700 text-white',
   Print: 'bg-yellow-500 hover:bg-yellow-600 text-black',
   'Download All (ZIP)': 'bg-purple-600 hover:bg-purple-700 text-white',
-  Dispatch: 'bg-green-600 hover:bg-green-700 text-white',
+  Dispatch: 'bg-green-400 hover:bg-green-700 text-white',
+  Delegate: 'bg-cyan-600 hover:bg-cyan-700 text-white',
 };
 
 const Requests: React.FC = () => {
@@ -49,6 +53,10 @@ const Requests: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [selectedOfficer, setselectedOfficer] = useState<string | undefined>();
   const [searchUser, setSearchUser] = useState('');
+
+      const session = useAppStore().session;
+  const userRole  = session?.role === 2 ?rolesMap[2] : session?.role === 3 ? rolesMap[3]:null;
+
 
   const fetchData = async () => {
     setLoading(true);
@@ -115,9 +123,38 @@ const requestSendtoOfficer = async () => {
     req.title.toLowerCase().includes(search.toLowerCase())
   );
 
-  const getActions = (status: Request['status']) => {
-    switch (status) {
-      case 'Unsigned':
+//  const getActions = (status: Request['status']) => {
+//   if (userRole === 'Reader') {
+//     switch (status) {
+//       case 'Draft':
+//         return ['Clone', 'Send for Signature', 'Delete'];
+//       case 'Delegated':
+//         return ['Clone', 'Sign'];
+//       case 'Ready for Dispatch':
+//         return ['Clone', 'Print', 'Download All (ZIP)', 'Dispatch'];
+//       case 'Waited for Signature':
+//         return ['Clone'];
+//       default:
+//         return [];
+//     }
+//   } else {
+//     // Officer actions based on officeraction
+//     switch (req.officeraction) {
+//       case 'Pending':
+//         return ['Sign'];
+//       case 'Signed':
+//         return ['Print', 'Dispatch'];
+//       default:
+//         return [];
+//     }
+//   }
+// };
+
+const getActions = (req: Request) => {
+  console.log('rew',req);
+  if (userRole === 'Reader') {
+    switch (req.status) {
+      case 'Draft':
         return ['Clone', 'Send for Signature', 'Delete'];
       case 'Delegated':
         return ['Clone', 'Sign'];
@@ -128,10 +165,41 @@ const requestSendtoOfficer = async () => {
       default:
         return [];
     }
-  };
+  } else {
+    // Officer actions based on officeraction
+    switch (req.actions) {
+      case 'Draft':
+        return ['Clone','Sign'];
+      case 'Submited':
+        return['Clone','Print']
+      case 'Pending':
+        return ['Clone','Sign','Delegate'];
+      case 'Signed':
+        return ['Clone','Print', 'Dispatch'];
+      default:
+        return [];
+    }
+  }
+};
 
-  const handleClone = (request: Request) => {
-    alert(`Clone clicked for "${request.title}"`);
+
+  const handleClone = async (request: Request) => {
+   // alert(`Clone clicked for "${request.title}"`);
+
+    try {
+      const response = await mainClient.request("POST", "/api/request/cloneRequest", {
+        data: {
+          requestId: request._id, // Use request._id directly instead of selectedRequest
+        },
+      });
+      if (response.status === 201) {
+        setLoadvar((prev)=>prev+1);
+      } else {
+        alert("Failed to clone request.");
+      }
+    } catch (error) {
+      alert("Failed to clone request.");
+    }
   };
 
   const handleSendForSignature = (request: Request) => {
@@ -268,6 +336,7 @@ const requestSendtoOfficer = async () => {
 
   return (
     <div className="p-4">
+      <h2 className="text-lg font-bold mb-4">{userRole === 'Reader' ? "Reader Dashboard" :"Officer Dashboard"}</h2>
       <div className="flex justify-between items-center mb-4">
         <input
           type="text"
@@ -302,9 +371,12 @@ const requestSendtoOfficer = async () => {
               <td className="p-2 cursor-pointer" onClick={() => openrequest(req._id)}>{req.numberOfDocuments}</td>
               <td className="p-2 cursor-pointer text-red-500" onClick={() => alert(`Rejected Docs: ${req.rejectedDocuments}`)}>{req.rejectedDocuments}</td>
               <td className="p-2">{req.createdAt}</td>
-              <td className="p-2">{req.status}</td>
+              <td className={"p-2" }>
+               {userRole === 'Reader' ? req.status : req.actions}
+              </td>
               <td className="p-2 flex flex-wrap gap-2">
-                {getActions(req.status).map((action) => (
+                {/* if userRole === 'Reader' then show this else officer action */}
+                {/* {getActions(req.status).map((action) => (
                   <button
                     key={action}
                     className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
@@ -312,7 +384,17 @@ const requestSendtoOfficer = async () => {
                   >
                     {action}
                   </button>
-                ))}
+                ))} */}
+                {getActions(req).map((action) => (
+  <button
+    key={action}
+    className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
+    onClick={() => handleClick(action, req)}
+  >
+    {action}
+  </button>
+))}
+
               </td>
             </tr>
           ))}
