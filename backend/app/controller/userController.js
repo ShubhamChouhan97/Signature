@@ -24,7 +24,7 @@ export const loginUser = async (req, res) => {
     return res.json({ message: 'success' });
 }
 
-export const officerlist = async (role, courtId) => {
+export const  officerlist = async (role, courtId) => {
     let findrole = role === 2 ? 1 : 2;
 
     const officer = await userModel.find(

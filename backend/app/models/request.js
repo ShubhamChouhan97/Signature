@@ -55,7 +55,7 @@ const RequestSchema = new mongoose.Schema({
       type: String,
       default:null,
     },
-    name: {
+    officerName: {
       type: String,
       default:null,
     }
@@ -77,6 +77,10 @@ const RequestSchema = new mongoose.Schema({
     type: String,
     enum: ['Unsigned','Delegated','Ready for Dispatch','Waited for Signature'],
     default: 'Unsigned',
+  },
+  deleteFlag:{
+    type:Boolean,
+    default:false
   },
   actions: [
     {

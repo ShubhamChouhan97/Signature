@@ -126,7 +126,7 @@ export default function RequestPage() {
   };
 	
 const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-	console.log("hi");
+	// console.log("hi");
 	const file = event.target.files?.[0];
 	if (!file) return;
   
@@ -162,7 +162,7 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-5xl mx-auto bg-white shadow-md rounded-xl p-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-semibold">Request Name</h1>
+          <h1 className="text-2xl font-semibold">Document Management</h1>
           <div className="space-x-3">
             <input
               type="file"
@@ -185,42 +185,6 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
             </button>
           </div>
         </div>
-
-        {/* <table className="w-full table-auto border-collapse">
-		<thead>
-         <tr className="bg-gray-100 text-left">
-         {tablehead.map((req) => (
-         <th key={req.toString()} className="p-3">{req.toString()}</th>
-         ))}
-         <th className="p-3">Sign Date</th>
-        <th className="p-3">Request Status</th>
-        <th className="p-3">Action</th>
-        </tr>
-        </thead>
-
-          <tbody>
-
-            {documents.map((doc, index) => (
-              <tr key={index} className="border-t">
-                <td className="p-3">{doc.name}</td>
-                <td className="p-3">{doc.type}</td>
-                <td className="p-3">{doc.status}</td>
-                <td className="p-3">{doc.owner}</td>
-                <td className="p-3">{doc.signDate || "—"}</td>
-                <td className="p-3 text-blue-600">
-                  {doc.requestStatus === "Signed" && <a href="#">Download</a>}
-                  {["Delegated", "Unsigned"].includes(doc.requestStatus) && (
-                    <a href="#">Preview</a>
-                  )}
-                </td>
-                <td className="p-3 text-blue-600">
-                  {doc.requestStatus === "Unsigned" && <a href="#">Delete</a>}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table> */}
-
 <table className="table-auto w-full">
   <thead>
     <tr className="bg-gray-100 text-left">

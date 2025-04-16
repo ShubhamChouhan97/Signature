@@ -57,15 +57,19 @@ export const allrequest = async (req, res) => {
      // console.log('role',userRole);
       let requests;
       // Find all requests where 'createdBy' equals the current user's ID
-     if(userRole == 3){
-        console.log('rolecheck');
-        requests = await Request.find({ createdById: userId });
-     }
-     if(userRole==2)
-     {
-        requests = await Request.find({ 'checkofficer.officerId': userId });
-     }
-      
+      if (userRole === 3) {
+        // Creator role: fetch requests created by user and not marked as deleted
+        requests = await Request.find({
+          createdById: userId,
+          deleteFlag: false,
+        });
+      } else if (userRole === 2) {
+        // Officer role: fetch requests where the officer is involved and not marked as deleted
+        requests = await Request.find({
+          'checkofficer.officerId': userId,
+          deleteFlag: false,
+        });
+      }
       res.status(200).json(requests);
     } catch (error) {
       console.error("Get All Request Error:", error);
@@ -112,34 +116,65 @@ export const allrequest = async (req, res) => {
     }
   }
 
-//   export const bulkUpload = async (req, res) => {
-//      const id = req.body.requestId; 
-//     // Check if file is uploaded
-//     if (!req.file) {
-//       return res.status(400).send("No file uploaded.");
-//     }
-//     // Proceed with further logic (like saving data to DB or processing the file)
-//     try {
-//     //   console.log(req.file);
-  
-//     // upadate path to request 
-//     const request = await Request.findById(id);
+
+// export const bulkUpload = async (req, res) => {
+//   const requestId = req.body.requestId; 
+
+//   // Check if file is uploaded
+//   if (!req.file) {
+//     return res.status(400).send("No file uploaded.");
+//   }
+
+//   try {
+//     // Read the Excel file
+//     const workbook = XLSX.readFile(req.file.path);
+//     const sheetName = workbook.SheetNames[0]; // Assuming the data is in the first sheet
+//     const sheet = workbook.Sheets[sheetName];
+    
+//     // Convert sheet to JSON (dynamic headers will be detected here)
+//     const data = XLSX.utils.sheet_to_json(sheet);
+
+//     // Example of logging dynamic headers for insight
+//     const headers = Object.keys(data[0] || {});
+//     console.log("Dynamic Headers:", headers);
+
+//     // You can now handle the dynamic data accordingly
+//     // For example, if your database model is flexible, you can map each row to a format dynamically:
+//     const parsedData = data.map((row, index) => {
+//       const dynamicRow = {};
+      
+//       // Dynamically map each field to the parsed data
+//       headers.forEach(header => {
+//         dynamicRow[header] = row[header];
+//       });
+//       dynamicRow['status'] = 'Unsigned';
+//       return dynamicRow;
+//     });
+//      const bulk= new Bulkdata({requestId,parsedData})
+//      await bulk.save()
+//     const BulkDataId = bulk._id;
+     
+//     // Update the request with the parsed data
+//     const request = await Request.findById(requestId);
 //     const path = req.file.path;
 //     request.exceldatafile = path;
+//     request.bulkdataId = BulkDataId;
 //     await request.save();
 
-//       // Send success response
-//       return res.status(200).send({
-//         message: "File uploaded successfully.",
-//         filename: req.file.filename,
-//       });
-//     } catch (err) {
-//       console.error("Error processing file:", err);
-//       return res.status(500).send("Error processing the uploaded file.");
-//     }
-//   };
+//     // Send success response
+//     return res.status(200).send({
+//       message: "File uploaded and data processed successfully.",
+//       filename: req.file.filename,
+//       bulkdataId: BulkDataId
+//     });
+//   } catch (err) {
+//     console.error("Error processing file:", err);
+//     return res.status(500).send("Error processing the uploaded file.");
+//   }
+// };
+
 export const bulkUpload = async (req, res) => {
-  const requestId = req.body.requestId; 
+  const requestId = req.body.requestId;
 
   // Check if file is uploaded
   if (!req.file) {
@@ -151,10 +186,13 @@ export const bulkUpload = async (req, res) => {
     const workbook = XLSX.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0]; // Assuming the data is in the first sheet
     const sheet = workbook.Sheets[sheetName];
-    
+
     // Convert sheet to JSON (dynamic headers will be detected here)
     const data = XLSX.utils.sheet_to_json(sheet);
 
+    if (data.length === 0) {
+      return res.status(400).send("No data found in the Excel file.");
+    }
     // Example of logging dynamic headers for insight
     const headers = Object.keys(data[0] || {});
     console.log("Dynamic Headers:", headers);
@@ -163,7 +201,7 @@ export const bulkUpload = async (req, res) => {
     // For example, if your database model is flexible, you can map each row to a format dynamically:
     const parsedData = data.map((row, index) => {
       const dynamicRow = {};
-      
+
       // Dynamically map each field to the parsed data
       headers.forEach(header => {
         dynamicRow[header] = row[header];
@@ -171,22 +209,29 @@ export const bulkUpload = async (req, res) => {
       dynamicRow['status'] = 'Unsigned';
       return dynamicRow;
     });
-     const bulk= new Bulkdata({requestId,parsedData})
-     await bulk.save()
+
+    // Save the parsed data to the Bulkdata model
+    const bulk = new Bulkdata({ requestId, parsedData });
+    await bulk.save();
     const BulkDataId = bulk._id;
-     
+
     // Update the request with the parsed data
     const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).send("Request not found.");
+    }
     const path = req.file.path;
     request.exceldatafile = path;
     request.bulkdataId = BulkDataId;
+    request.numberOfDocuments=data.length;
     await request.save();
 
     // Send success response
     return res.status(200).send({
       message: "File uploaded and data processed successfully.",
       filename: req.file.filename,
-      bulkdataId: BulkDataId
+      bulkdataId: BulkDataId,
+      dataSize: data.length // Include size of the data in response
     });
   } catch (err) {
     console.error("Error processing file:", err);
@@ -214,4 +259,23 @@ export const bulkUpload = async (req, res) => {
     const bulk = await Bulkdata.findById(bulkdataId);
     const data = bulk.parsedData;
     res.status(200).json(data);
+  }
+
+  export const sendtoofficer = async (req,res) =>{
+    const { requestId,officerId,officerName } = req.body;
+    const request = await Request.findById(requestId);
+     console.log(request);
+     request.checkofficer.officerId=officerId;
+     request.checkofficer.officerName=officerName;
+     request.status = 'Waited for Signature';
+     await request.save();
+    res.status(200).json("Sended to Officer");
+  }
+
+  export const deleteRequest = async (req,res)=>{
+    const { requestId } = req.body;
+    const request = await Request.findById(requestId);
+    request.deleteFlag = 'true';
+    await request.save();
+    res.status(200).json("deleted");
   }

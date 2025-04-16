@@ -1,4 +1,3 @@
-// version 2
 import React, { useEffect, useState } from 'react';
 import {
   Button,
@@ -6,6 +5,8 @@ import {
   Form,
   Input,
   Upload,
+  Modal,
+  Select,
 } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import { mainClient } from "../store";
@@ -19,41 +20,6 @@ interface Request {
   createdAt: string;
   status: 'Unsigned' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature';
 }
-
-const mockRequests: Request[] = [
-  {
-    _id: '3s',
-    title: 'NDA Agreement',
-    numberOfDocuments: 3,
-    rejectedDocuments: 1,
-    createdAt: '2025-04-13 10:00',
-    status: 'Unsigned',
-  },
-  {
-    _id: "ss",
-    title: 'Service Contract',
-    numberOfDocuments: 2,
-    rejectedDocuments: 0,
-    createdAt: '2025-04-12 14:30',
-    status: 'Delegated',
-  },
-  {
-    _id: "3",
-    title: 'Partnership Deal',
-    numberOfDocuments: 5,
-    rejectedDocuments: 2,
-    createdAt: '2025-04-10 09:15',
-    status: 'Ready for Dispatch',
-  },
-  {
-    _id: "4",
-    title: 'Employee Agreement',
-    numberOfDocuments: 1,
-    rejectedDocuments: 0,
-    createdAt: '2025-04-09 17:20',
-    status: 'Waited for Signature',
-  },
-];
 
 const actionButtonColors: Record<string, string> = {
   Clone: 'bg-gray-500 hover:bg-gray-600 text-white',
@@ -72,9 +38,18 @@ const Requests: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const [requestdata, setRequest] = useState<Request[]>([]);
+  const [loadvar,setLoadvar] = useState(0);
+  // officer data 
+  const [officerLoading, setOfficerLoading] = useState(false); // Loading state for officer data
+  const [officerData, setOfficerData] = useState<{ label: string, value: string }[]>([]); // Officer data state
+  
 
+// send for signature 
+  const [isSignatureModalVisible, setIsSignatureModalVisible] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
+  const [selectedOfficer, setselectedOfficer] = useState<string | undefined>();
+  const [searchUser, setSearchUser] = useState('');
 
-  // rasie a api request to get all request from server when page is laoded
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -87,11 +62,54 @@ const Requests: React.FC = () => {
       setLoading(false);
     }
   };
-  
+
   useEffect(() => {
     fetchData();
-  }, []);
+    handleOfficerSelectClick();
+  }, [loadvar]);
+
+
+  // Function to get officer selection 
+  const handleOfficerSelectClick = async () => {
+    setOfficerLoading(true); // Start loading indicator
+    try {
+      const response = await mainClient.request("GET", "api/users/officer");
+      const officerOptions = response.data.map((officer: { name: string, id: string }) => ({
+        label: officer.name,
+        value: officer.id,
+      }));
   
+   setOfficerData(officerOptions); // Set the fetched officer data
+    } catch (error) {
+      console.error("Error fetching officer data:", error);
+    } finally {
+      setOfficerLoading(false); // Stop loading indicator
+    }
+  }
+// function to send Request to officer
+const requestSendtoOfficer = async () => {
+  const officerName = officerData.find(officer => officer.value === selectedOfficer)?.label;
+  try {
+    const response = await mainClient.request("POST", "/api/request/send-to-officer", {
+      data: {
+        requestId: selectedRequest?._id,  // Include requestId in the request body
+        officerId: selectedOfficer,
+        officerName: officerName,
+      },
+    });
+
+    if (response.status === 200) {
+      console.log('Request sent to officer successfully!');
+      setLoadvar((prev)=>prev+1);
+    } else {
+      console.error('Failed to send request');
+      alert('Failed to send request to officer.');
+    }
+  } catch (error) {
+    console.error('Error sending request:', error);
+    alert('Failed to send request to officer.');
+  }
+};
 
   const filteredRequests = requestdata.filter((req) =>
     req.title.toLowerCase().includes(search.toLowerCase())
@@ -112,8 +130,90 @@ const Requests: React.FC = () => {
     }
   };
 
+  const handleClone = (request: Request) => {
+    alert(`Clone clicked for "${request.title}"`);
+  };
+
+  const handleSendForSignature = (request: Request) => {
+    setSelectedRequest(request);
+
+    if(request.numberOfDocuments === 0){
+      alert("Please Uplaod documents to For send to officer")
+      return;
+    }
+    setIsSignatureModalVisible(true);
+  };
+
+  const handleSignatureSubmit = async () => {
+    if (!selectedOfficer) {
+      alert("Please select a signer.");
+      return;
+    }
+
+    requestSendtoOfficer()
+    setIsSignatureModalVisible(false);
+    setselectedOfficer(undefined);
+    setSearchUser('');
+  };
+
+  const handleDelete = async (request: Request) => {
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${request.title}"?`);
+    if (!confirmDelete) {
+      return; // Exit if user clicks "Cancel"
+    }
+  
+    try {
+      const response = await mainClient.request("POST", "/api/request/deleteRequest", {
+        data: {
+          requestId: request._id, // Use request._id directly instead of selectedRequest
+        },
+      });
+      if (response.status === 200) {
+        setLoadvar((prev)=>prev+1);
+      } else {
+        alert("Failed to delete request.");
+      }
+    } catch (error) {
+      alert("Failed to delete request.");
+    }
+  };
+  
+
+  const handleSign = (request: Request) => {
+    alert(`Sign clicked for "${request.title}"`);
+  };
+
+  const handlePrint = (request: Request) => {
+    alert(`Print clicked for "${request.title}"`);
+  };
+
+  const handleDownloadZip = (request: Request) => {
+    alert(`Download All (ZIP) clicked for "${request.title}"`);
+  };
+
+  const handleDispatch = (request: Request) => {
+    alert(`Dispatch clicked for "${request.title}"`);
+  };
+
   const handleClick = (action: string, request: Request) => {
-    alert(`${action} clicked for "${request.title}"`);
+    switch (action) {
+      case 'Clone':
+        return handleClone(request);
+      case 'Send for Signature':
+        return handleSendForSignature(request);
+      case 'Delete':
+        return handleDelete(request);
+      case 'Sign':
+        return handleSign(request);
+      case 'Print':
+        return handlePrint(request);
+      case 'Download All (ZIP)':
+        return handleDownloadZip(request);
+      case 'Dispatch':
+        return handleDispatch(request);
+      default:
+        console.warn(`No handler for action: ${action}`);
+    }
   };
 
   const handleAddRequest = () => {
@@ -125,21 +225,21 @@ const Requests: React.FC = () => {
     try {
       setLoading(true);
       const formDataValues = form.getFieldsValue();
-  
+
       const fileList = formDataValues.upload;
       if (!fileList || fileList.length === 0) {
         alert('Please upload a .doc or .docx file.');
         setLoading(false);
         return;
       }
-  
+
       const file = fileList[0].originFileObj;
-  
+
       const formDataToSend = new FormData();
       formDataToSend.append('title', formDataValues.title);
       formDataToSend.append('description', formDataValues.description);
-      formDataToSend.append('template', file); // Must match backend field name
-  
+      formDataToSend.append('template', file);
+
       await mainClient.request(
         "POST",
         "api/request/redersend",
@@ -150,8 +250,7 @@ const Requests: React.FC = () => {
           },
         }
       );
-  
-      console.log('New request created:', formDataValues);
+
       fetchData();
       setIsDrawerOpen(false);
       form.resetFields();
@@ -162,14 +261,13 @@ const Requests: React.FC = () => {
       setLoading(false);
     }
   };
-  
- const openrequest = async (id:string) =>{
-   console.log(id);
-   navigate(`/dashboard/request/${id}`);
- }
+
+  const openrequest = (id: string) => {
+    navigate(`/dashboard/request/${id}`);
+  };
+
   return (
     <div className="p-4">
-      {/* Navbar */}
       <div className="flex justify-between items-center mb-4">
         <input
           type="text"
@@ -186,7 +284,6 @@ const Requests: React.FC = () => {
         </button>
       </div>
 
-      {/* Table */}
       <table className="min-w-full table-auto border-collapse">
         <thead>
           <tr className="bg-gray-200 text-left">
@@ -222,7 +319,6 @@ const Requests: React.FC = () => {
         </tbody>
       </table>
 
-      {/* Drawer Form */}
       <Drawer
         title="Create New Signature Request"
         placement="right"
@@ -254,7 +350,7 @@ const Requests: React.FC = () => {
                   alert('You can only upload .doc or .docx files!');
                   return Upload.LIST_IGNORE;
                 }
-                return false; // prevent auto-upload
+                return false;
               }}
               accept=".doc,.docx"
             >
@@ -275,6 +371,63 @@ const Requests: React.FC = () => {
           </Button>
         </Form>
       </Drawer>
+
+      {/* Signature Modal */}
+      <Modal
+        title={`Send "${selectedRequest?.title}" for Signature`}
+        open={isSignatureModalVisible}
+        onCancel={() => setIsSignatureModalVisible(false)}
+        onOk={handleSignatureSubmit}
+        okText="Send"
+      >
+<div className="mb-4">
+  <Input
+    placeholder="Search signer..."
+    value={searchUser}
+    onChange={(e) => setSearchUser(e.target.value)}
+    className="mb-3 w-full rounded border-gray-300 focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all duration-200"
+    allowClear
+  />
+
+  {searchUser && (
+    <div className="mb-3 max-h-48 overflow-y-auto border rounded-md bg-white shadow-md">
+      {officerData.filter((officer) =>
+        officer.label.toLowerCase().includes(searchUser.toLowerCase())
+      ).length > 0 ? (
+        officerData
+          .filter((officer) =>
+            officer.label.toLowerCase().includes(searchUser.toLowerCase())
+          )
+          .map((officer) => (
+            <div
+              key={officer.value}
+              className="cursor-pointer px-4 py-2 hover:bg-blue-100 border-b last:border-none transition-all"
+              onClick={() => {
+                setselectedOfficer(officer.value);
+                setSearchUser('');
+              }}
+            >
+              {officer.label}
+            </div>
+          ))
+      ) : (
+        <div className="text-gray-500 italic text-center py-2">No officer found</div>
+      )}
+    </div>
+  )}
+
+  <Select
+    showSearch
+    placeholder="Or manually select a signer"
+    value={selectedOfficer}
+    onChange={setselectedOfficer}
+    style={{ width: '100%' }}
+    className="custom-ant-select"
+    options={officerData}
+  />
+</div>
+
+      </Modal>
     </div>
   );
 };
