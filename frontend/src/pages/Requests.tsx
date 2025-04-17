@@ -7,6 +7,7 @@ import {
   Upload,
   Modal,
   Select,
+  message,
 } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
 import { mainClient, useAppStore } from "../store";
@@ -72,14 +73,11 @@ const Requests: React.FC = () => {
       setRequest(data);
     } catch (error) {
       console.error("Error fetching requests:", error);
-    } finally {
-      setLoading(false);
-    }
+    } 
   };
 
   useEffect(() => {
     fetchData();
-    handleOfficerSelectClick();
   }, [loadvar]);
 
 
@@ -113,15 +111,13 @@ const requestSendtoOfficer = async () => {
     });
 
     if (response.status === 200) {
-      console.log('Request sent to officer successfully!');
+      message.success('Request sent to officer successfully!');
       setLoadvar((prev)=>prev+1);
     } else {
-      console.error('Failed to send request');
-      alert('Failed to send request to officer.');
+      message.error('Failed to send request to officer.');
     }
   } catch (error) {
-    console.error('Error sending request:', error);
-    alert('Failed to send request to officer.');
+    message.error('Failed to send request to officer.');
   }
 };
 
@@ -174,11 +170,12 @@ const getActions = (req: Request) => {
         setIsCloneModalVisible(false);
         setCloningRequest(null);
         setLoadvar((prev) => prev + 1);
+        message.success("Clone Successfully")
       } else {
-        alert("Failed to clone request.");
+        message.error("Failed to clone request.");
       }
     } catch (error) {
-      alert("Failed to clone request.");
+      message.error("Failed to clone request.");
     }
   };
   
@@ -190,10 +187,11 @@ const getActions = (req: Request) => {
   
 
   const handleSendForSignature = (request: Request) => {
+    handleOfficerSelectClick();
     setSelectedRequest(request);
 
     if(request.numberOfDocuments === 0){
-      alert("Please Uplaod documents to For send to officer")
+      message.error("Please Uplaod documents to For send to officer")
       return;
     }
     setIsSignatureModalVisible(true);
@@ -201,7 +199,7 @@ const getActions = (req: Request) => {
 
   const handleSignatureSubmit = async () => {
     if (!selectedOfficer) {
-      alert("Please select a signer.");
+      message.error("Please select a Officer.");
       return;
     }
 
@@ -226,10 +224,10 @@ const getActions = (req: Request) => {
       if (response.status === 200) {
         setLoadvar((prev)=>prev+1);
       } else {
-        alert("Failed to delete request.");
+        message.error("Failed to delete request.");
       }
     } catch (error) {
-      alert("Failed to delete request.");
+      message.error("Failed to delete request.");
     }
   };
   
@@ -284,7 +282,7 @@ const getActions = (req: Request) => {
 
       const fileList = formDataValues.upload;
       if (!fileList || fileList.length === 0) {
-        alert('Please upload a .doc or .docx file.');
+        message.error('Please upload a .doc or .docx file.');
         setLoading(false);
         return;
       }
@@ -312,7 +310,7 @@ const getActions = (req: Request) => {
       form.resetFields();
     } catch (err) {
       console.error("Error creating request:", err);
-      alert("Something went wrong while creating the request.");
+     message.error("Something went wrong while creating the request.");
     } finally {
       setLoading(false);
     }
@@ -334,7 +332,7 @@ const getActions = (req: Request) => {
       window.open(url, "_blank");
     } catch (err) {
       console.error("Error downloading template:", err);
-      alert("Something went wrong while opening the template.");
+      message.error("Something went wrong while opening the template.");
     }
   };
   

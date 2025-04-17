@@ -2,6 +2,7 @@ import React, { useRef,useEffect,useState } from "react";
 import { useLocation } from "react-router";
 import { mainClient,useAppStore } from "../store";
 import { rolesMap } from '../libs/statusMap';
+import { message } from "antd";
 
 
 const documents = [
@@ -43,6 +44,7 @@ export default function RequestPage() {
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
  const [loading, setLoading] = useState(false);
+ const [loadvar,setLoadvar] = useState(0);
   const [bulkdataId,setBulkdataId] =useState(null);
 
  interface Request {
@@ -59,7 +61,6 @@ export default function RequestPage() {
   const fetchData = async () => {
 	const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
-	  setLoading(true);
 	  try {
 		const response = await mainClient.request("POST", "/api/request/tablehead",{
 			data: { requestId },
@@ -68,8 +69,6 @@ export default function RequestPage() {
 		settablehead(data);
 	  } catch (error) {
 		console.error("Error fetching requests:", error);
-	  } finally {
-		setLoading(false);
 	  }
 	};
 	
@@ -81,25 +80,25 @@ export default function RequestPage() {
 	const fetchtableData = async () => {
 		const pathSegments = location.pathname.split("/");
         const requestId = pathSegments[pathSegments.length - 1];
-		  setLoading(true);
 		  try {
 			const response = await mainClient.request("POST", "/api/request/tabledata",{
 				data: { requestId },
 			});
     const [tableData, bulkdataId] = response.data;
-
+    if(response.status===200)
+    {
+      setLoading(false);
+    }
     setBulkdataId(bulkdataId);     // Set the ID
     settabledata(Array.isArray(tableData) ? tableData : []); // Set the table data array
 		  } catch (error) {
 			console.error("Error fetching requests:", error);
-		  } finally {
-			setLoading(false);
 		  }
 		};
 		
 		useEffect(() => {
 		  fetchtableData();
-		}, []);
+		}, [loading]);
 	
 
   const downloadExcelTemplate = async () => {
@@ -123,7 +122,7 @@ export default function RequestPage() {
       window.URL.revokeObjectURL(url);
     } catch (err) {
       console.error("Error downloading template:", err);
-      alert("Something went wrong while downloading the template.");
+      message.error("Something went wrong while downloading the template.");
     }
   };
 
@@ -133,38 +132,42 @@ export default function RequestPage() {
 	}
   };
 	
-const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-	// console.log("hi");
-	const file = event.target.files?.[0];
-	if (!file) return;
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
   
-	const pathSegments = location.pathname.split("/");
-	const requestId = pathSegments[pathSegments.length - 1];
+    const validExtensions = [".xls", ".xlsx", ".csv"];
+    const fileName = file.name.toLowerCase();
+    const isValidFile = validExtensions.some(ext => fileName.endsWith(ext));
   
-	const formData = new FormData();
-	formData.append("file", file);
-	formData.append("requestId", requestId);
+    if (!isValidFile) {
+      message.error("Please upload a valid .xls, .xlsx, or .csv file.");
+      return;
+    }
   
-	try {
-		const res =  await mainClient.request(
-			"POST",
-			"/api/request/bulkUpload",
-			{
-			  headers: {
-				"Content-Type": "multipart/form-data",
-			  },
-			  data: formData,
-			}
-		  );
-		    fetchtableData();
-	  alert("File uploaded successfully!");
-	  event.target.value = ""; // Reset input so same file can be re-uploaded
-	  // Optionally: Refresh document list or state update here
-	} catch (err) {
-	  console.error("File upload error:", err);
-	  alert("Failed to upload file.");
-	}
+    const pathSegments = location.pathname.split("/");
+    const requestId = pathSegments[pathSegments.length - 1];
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("requestId", requestId);
+  
+    try {
+      await mainClient.request("POST", "/api/request/bulkUpload", {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        data: formData,
+      });
+  
+      fetchtableData();
+      message.success("File uploaded successfully!");
+      event.target.value = ""; // Reset input so same file can be re-uploaded
+    } catch (err) {
+      console.error("File upload error:", err);
+      message.error("Failed to upload file.");
+    }
   };
+  
 
   const PreviewReqData = async (rowId: string)=>{
     const pathSegments = location.pathname.split("/");
@@ -180,11 +183,46 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
       const url = window.URL.createObjectURL(blob);
       window.open(url, "_blank");
     } catch (err) {
-      console.error("Error template:", err);
-      alert("Something went wrong while the template.");
+      message.error("Something went wrong while the template.");
     }
   }
   
+  const ReqDelete = async (rowId:string)=>{
+    const pathSegments = location.pathname.split("/");
+    const requestId = pathSegments[pathSegments.length - 1];
+    try{
+     const response =  await mainClient.request("POST", "/api/request/DeleteRequestOfficer", {
+        data: { requestId,rowId, bulkdataId },
+      });
+      if(response.status === 200)
+      {
+        setLoading(true);
+        message.success("Request Deleted Successfully");
+      }
+     
+    }catch{
+      message.error("Error In Deleting request");
+    }
+    
+  }
+
+  const ReqReject = async(rowId:string)=>{
+    const pathSegments = location.pathname.split("/");
+    const requestId = pathSegments[pathSegments.length - 1];
+    try{
+     const response = await mainClient.request("POST", "/api/request/RejectRequestOfficer", {
+        data: { requestId,rowId, bulkdataId },
+      });
+      if(response.status === 200)
+      {
+        setLoading(true);
+        message.success("Request Rejected Successfully");
+      }
+    }catch{
+     message.error("Error rejecting request");
+    }
+
+  }
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-5xl mx-auto bg-white shadow-md rounded-xl p-6">
@@ -240,25 +278,35 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         <td className="p-3">{doc.signDate || '—'}</td>
         <td className="p-3">{doc.status || '—'}</td>
         <td className="p-3">
-               {doc.status === "Signed" && (
-                <a href="#" className="text-blue-600 underline">Download</a>
+               { doc.status === "Signed" && (
+                <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
+                 Download
+               </button>
                )}
-               {["Delegated", "Unsigned"].includes(doc.status) && (
+               { doc.status === "Delegated" && (
+                <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
+                 Preview
+               </button>
+               )}
+               { doc.status === "Rejected" && (
+                <button className="bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600" onClick={() => alert("No action allow Request Allready Rejected")}>
+                 No Action Allow
+               </button>
+               )}
+               {["Unsigned"].includes(doc.status) && (
                <>
                <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
                  Preview
                </button>
                  {
                  userRole === 'Reader' ? 
-                 ( <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+                 ( <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600" onClick={() => ReqDelete(doc._id)}>
                   Delete
                   </button>) : (
-                    <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+                    <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600" onClick={() => ReqReject(doc._id)}>
                     Reject
                     </button>
                   )}
-              
-              
                 </>
                 )}
                </td>
