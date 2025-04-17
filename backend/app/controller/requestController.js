@@ -8,6 +8,10 @@ import Docxtemplater from 'docxtemplater';
 import fs from 'fs';
 import XLSX from 'xlsx'
 import Bulkdata from "../models/bulkdata.js";
+import convert from 'docx-pdf';
+import ExcelJS from 'exceljs';
+import mongoose from "mongoose";
+
 
 const extractTags = (docxBuffer) => {
     const zip = new PizZip(docxBuffer);
@@ -76,46 +80,107 @@ export const allrequest = async (req, res) => {
       res.status(500).json({ message: "Server error" });
     }
   };
-  
-  export const templateDownload = async (req, res) =>{
+
+  export const templateDownload = async (req, res) => {
     const { requestId } = req.body;
-    console.log(requestId);
+  
     if (!requestId) {
       return res.status(400).json({ error: "Request ID is required." });
     }
   
     try {
-      // Find the request in DB
       const request = await Request.findById(requestId);
-      console.log(request);
       if (!request) {
         return res.status(404).json({ error: "Request not found." });
       }
-  // Use correct key (check spelling of the field in your DB)
-  const fileRelativePath = request.tempaltefile; // fallback if DB typo exists
   
-  if (!fileRelativePath) {
-    return res.status(400).json({ error: "No template file associated with this request" });
-  }
-
-//   Corrected path to point to /uploads/templates/
-  const filePath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
-   console.log('file path',filePath);
-
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ error: "Template file not found" });
-  }
-      // Send the file for download
-  const fileName = path.basename(filePath);
-  console.log(fileName);
-  res.download(filePath, fileName);
-
+      const fileRelativePath = request.tempaltefile;
+      if (!fileRelativePath) {
+        return res.status(400).json({ error: "No template file associated with this request" });
+      }
+  
+      const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
+  
+      if (!fs.existsSync(inputPath)) {
+        return res.status(404).json({ error: "Template file not found" });
+      }
+  
+      const outputPath = inputPath.replace(/\.docx$/, ".pdf");
+  
+      // ✅ Convert DOCX to PDF
+      convert(inputPath, outputPath, function (err, result) {
+        if (err) {
+          console.error("Conversion error:", err);
+          return res.status(500).json({ error: "Conversion failed" });
+        }
+  
+        // ✅ Send converted PDF file
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="template.pdf"');
+        fs.createReadStream(outputPath).pipe(res);
+      });
     } catch (err) {
       console.error("Error downloading template:", err);
       res.status(500).json({ error: "Internal Server Error" });
     }
+  };
+export const templateExcelDownload = async (req, res) => {
+  const { requestId } = req.body;
+
+  if (!requestId) {
+    return res.status(400).json({ error: "Request ID is required." });
   }
 
+  try {
+    const request = await Request.findById(requestId);
+
+    if (!request) {
+      return res.status(404).json({ error: "Request not found." });
+    }
+
+    const placeholders = request.placeholders;
+
+    if (!placeholders || placeholders.length === 0) {
+      return res.status(400).json({ error: "No placeholders found in this request." });
+    }
+
+    // Create a workbook and worksheet
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Template");
+
+    // Add a header row using the placeholders
+    worksheet.addRow(placeholders);
+
+    // Optional: Add some style (bold headers)
+    worksheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true };
+    });
+
+    // Set file name and path
+    const fileName = `template_${requestId}.xlsx`;
+    const tempPath = path.join(process.cwd(), 'temp'); // create a temp folder if not exists
+    if (!fs.existsSync(tempPath)) fs.mkdirSync(tempPath);
+    const filePath = path.join(tempPath, fileName);
+
+    // Save the workbook to a file
+    await workbook.xlsx.writeFile(filePath);
+
+    // Send the file
+    res.download(filePath, fileName, (err) => {
+      if (err) {
+        console.error("Download error:", err);
+        res.status(500).json({ error: "Failed to download the Excel file." });
+      } else {
+        // Optional: delete the file after download
+        fs.unlinkSync(filePath);
+      }
+    });
+
+  } catch (err) {
+    console.error("Error downloading template:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
 
 // export const bulkUpload = async (req, res) => {
 //   const requestId = req.body.requestId; 
@@ -195,17 +260,17 @@ export const bulkUpload = async (req, res) => {
     }
     // Example of logging dynamic headers for insight
     const headers = Object.keys(data[0] || {});
-    console.log("Dynamic Headers:", headers);
+   // console.log("Dynamic Headers:", headers);
 
-    // You can now handle the dynamic data accordingly
-    // For example, if your database model is flexible, you can map each row to a format dynamically:
-    const parsedData = data.map((row, index) => {
-      const dynamicRow = {};
-
+    // handle the dynamic data accordingly
+    const parsedData = data.map((row) => {
+      const dynamicRow = { _id: new mongoose.Types.ObjectId() };
+    
       // Dynamically map each field to the parsed data
       headers.forEach(header => {
         dynamicRow[header] = row[header];
       });
+    
       dynamicRow['status'] = 'Unsigned';
       return dynamicRow;
     });
@@ -251,14 +316,20 @@ export const bulkUpload = async (req, res) => {
 
   export const tabledata = async (req,res)=>{
     const { requestId } = req.body;
-    console.log("req",requestId);
+    // console.log("req",requestId);
     const request = await Request.findById(requestId);
 
     const bulkdataId = request.bulkdataId;
-    console.log("bul",bulkdataId);
+    // console.log("bul",bulkdataId);
     const bulk = await Bulkdata.findById(bulkdataId);
     const data = bulk.parsedData;
-    res.status(200).json(data);
+    // add bulk id in data
+
+    const datavar = []
+    datavar.push(data);
+    datavar.push(bulk._id);
+
+    res.status(200).json(datavar);
   }
 
   export const sendtoofficer = async (req,res) =>{
@@ -282,8 +353,10 @@ export const bulkUpload = async (req, res) => {
   }
 
   export const cloneRequest = async (req, res) => {
+    const userId = req.session.userId;
+      const userRole = req.session.role;
     try {
-      const { requestId } = req.body;
+      const { requestId,newTitle } = req.body;
       console.log("Request ID to clone:", requestId);
   
       // Use findById to get a single document
@@ -292,10 +365,11 @@ export const bulkUpload = async (req, res) => {
       if (!originalRequest) {
         return res.status(404).json({ message: "Original request not found" });
       }
-  
       // Convert to plain object and remove unwanted fields
-      const { _id, createdAt, updatedAt, status, checkofficer, deleteFlag, ...requestData } = originalRequest._doc;
-  
+      const { _id,id,exceldatafile,createdById,createrRole,bulkdataId, createdAt, status, checkofficer, deleteFlag,numberOfDocuments,rejectedDocuments,actions, ...requestData } = originalRequest._doc;
+      requestData.title = newTitle;
+      requestData.createrRole=userRole;
+      requestData.createdById=userId;
       // Create a new request with cloned data
       const clonedRequest = new Request(requestData);
       await clonedRequest.save();
@@ -310,3 +384,68 @@ export const bulkUpload = async (req, res) => {
     }
   };
   
+
+export const PreviewRequest = async (req, res) => {
+  const { requestId, rowId, bulkdataId } = req.body;
+
+  if (!requestId || !rowId || !bulkdataId) {
+    return res.status(400).json({ error: "Missing required fields." });
+  }
+
+  try {
+    const request = await Request.findById(requestId);
+    if (!request) return res.status(404).json({ error: "Request not found." });
+
+    const fileRelativePath = request.tempaltefile;
+    if (!fileRelativePath) return res.status(400).json({ error: "No template file associated with this request." });
+
+    const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
+    if (!fs.existsSync(inputPath)) return res.status(404).json({ error: "Template file not found." });
+
+    const bulk = await Bulkdata.findById(bulkdataId);
+    if (!bulk || !Array.isArray(bulk.parsedData)) {
+      return res.status(404).json({ error: "Bulk data not found or malformed." });
+    }
+
+    const mapArray = bulk.parsedData;
+    const rowMap = mapArray.find((row) => row.get("_id").toString() === rowId);
+    if (!rowMap) return res.status(404).json({ error: "Row data not found." });
+
+    const rowData = Object.fromEntries(rowMap.entries());
+    //console.log("Final data to be injected into doc:", rowData);
+
+    // Load template
+    const content = fs.readFileSync(inputPath, "binary");
+    const zip = new PizZip(content);
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+    });
+
+    // ✅ New docxtemplater API usage
+    doc.render(rowData);
+
+    const buf = doc.getZip().generate({ type: "nodebuffer" });
+    const tempDocxPath = path.join(process.cwd(), "temp", `filled_${Date.now()}.docx`);
+    const outputPath = tempDocxPath.replace(".docx", ".pdf");
+
+    fs.writeFileSync(tempDocxPath, buf);
+
+    convert(tempDocxPath, outputPath, function (err) {
+      fs.unlink(tempDocxPath, () => {});
+      if (err) {
+        console.error("Conversion error:", err);
+        return res.status(500).json({ error: "Conversion failed" });
+      }
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
+      fs.createReadStream(outputPath)
+        .on("end", () => fs.unlink(outputPath, () => {}))
+        .pipe(res);
+    });
+  } catch (err) {
+    console.error("Error in PreviewRequest:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};

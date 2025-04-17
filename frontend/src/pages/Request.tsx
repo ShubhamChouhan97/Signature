@@ -1,6 +1,8 @@
 import React, { useRef,useEffect,useState } from "react";
 import { useLocation } from "react-router";
-import { mainClient } from "../store";
+import { mainClient,useAppStore } from "../store";
+import { rolesMap } from '../libs/statusMap';
+
 
 const documents = [
   {
@@ -41,12 +43,14 @@ export default function RequestPage() {
   const location = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
  const [loading, setLoading] = useState(false);
-
+  const [bulkdataId,setBulkdataId] =useState(null);
 
  interface Request {
    [key: string]: any; // Add this to allow dynamic keys like 'signDate'
    signDate?: string;  // Explicitly define 'signDate' as an optional property
  }
+  const session = useAppStore().session;
+  const userRole  = session?.role === 2 ?rolesMap[2] : session?.role === 3 ? rolesMap[3]:null;
 
  const [tablehead, settablehead] = useState<Request[]>([]);
  const [tabledata, settabledata] = useState<Request[]>([]);
@@ -82,8 +86,10 @@ export default function RequestPage() {
 			const response = await mainClient.request("POST", "/api/request/tabledata",{
 				data: { requestId },
 			});
-			const data = Array.isArray(response.data) ? response.data : [];
-			settabledata(data);
+    const [tableData, bulkdataId] = response.data;
+
+    setBulkdataId(bulkdataId);     // Set the ID
+    settabledata(Array.isArray(tableData) ? tableData : []); // Set the table data array
 		  } catch (error) {
 			console.error("Error fetching requests:", error);
 		  } finally {
@@ -96,12 +102,12 @@ export default function RequestPage() {
 		}, []);
 	
 
-  const downloadTemplate = async () => {
+  const downloadExcelTemplate = async () => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
 
     try {
-      const response = await mainClient.request("POST", "/api/request/templateDownload", {
+      const response = await mainClient.request("POST", "/api/request/templateExcelDownload", {
         responseType: "blob",
         data: { requestId },
       });
@@ -110,7 +116,7 @@ export default function RequestPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "template.docx";
+      a.download = "template.xlsx";
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -159,12 +165,31 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
 	  alert("Failed to upload file.");
 	}
   };
+
+  const PreviewReqData = async (rowId: string)=>{
+    const pathSegments = location.pathname.split("/");
+    const requestId = pathSegments[pathSegments.length - 1];
+
+    try {
+      const response = await mainClient.request("POST", "/api/request/PreviewRequest", {
+        responseType: "blob",
+        data: { requestId,rowId,bulkdataId },
+      });
+
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error("Error template:", err);
+      alert("Something went wrong while the template.");
+    }
+  }
   
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-5xl mx-auto bg-white shadow-md rounded-xl p-6">
         <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-semibold">Document Management</h1>
+          <h1 className="text-2xl font-semibold">{userRole === 'Reader' ? "Reader Document Management" :"Officer Document Management"}</h1>
           <div className="space-x-3">
             <input
               type="file"
@@ -173,7 +198,9 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
               ref={fileInputRef}
               onChange={handleFileChange}
             />
-            <button
+             {userRole === 'Reader' ? (
+              <>
+              <button
               className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
               onClick={handleBulkUploadClick}
             >
@@ -181,10 +208,12 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
             </button>
             <button
               className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
-              onClick={downloadTemplate}
+              onClick={downloadExcelTemplate}
             >
               Download Template
             </button>
+              </>
+             ) : <></>}
           </div>
         </div>
 <table className="table-auto w-full">
@@ -210,17 +239,34 @@ const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
         ))}
         <td className="p-3">{doc.signDate || '—'}</td>
         <td className="p-3">{doc.status || '—'}</td>
-        <td className="p-3 text-blue-600">
-          {doc.status === "Signed" && <a href="#">Download</a>}
-          {["Delegated", "Unsigned"].includes(doc.status) && (
-            <a href="#">Preview Delete</a>
-          )}
-        </td>
-        <td className="p-3 text-blue-600">
-          {doc.requestStatus === "Unsigned" && <a href="#">Delete</a>}
-        </td>
-      </tr>
-    ))}
+        <td className="p-3">
+               {doc.status === "Signed" && (
+                <a href="#" className="text-blue-600 underline">Download</a>
+               )}
+               {["Delegated", "Unsigned"].includes(doc.status) && (
+               <>
+               <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
+                 Preview
+               </button>
+                 {
+                 userRole === 'Reader' ? 
+                 ( <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+                  Delete
+                  </button>) : (
+                    <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600">
+                    Reject
+                    </button>
+                  )}
+              
+              
+                </>
+                )}
+               </td>
+                <td className="p-3 text-blue-600">
+                {doc.requestStatus === "Unsigned" && <a href="#">Delete</a>}
+                </td>
+                </tr>
+                ))}
   </tbody>
 </table>
 

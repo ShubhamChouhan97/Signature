@@ -15,6 +15,7 @@ const BulkdataSchema = new mongoose.Schema({
         required:true,
     },
     parsedData: [{
+       _id: mongoose.Schema.Types.ObjectId,
         type: Map,
         of: String,  // Use Map with dynamic keys and string values
     }],

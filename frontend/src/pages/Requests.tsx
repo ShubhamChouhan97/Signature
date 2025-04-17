@@ -54,6 +54,12 @@ const Requests: React.FC = () => {
   const [selectedOfficer, setselectedOfficer] = useState<string | undefined>();
   const [searchUser, setSearchUser] = useState('');
 
+  // Request Clone 
+  const [isCloneModalVisible, setIsCloneModalVisible] = useState(false);
+  const [cloningRequest, setCloningRequest] = useState<Request | null>(null);
+  const [clonedTitle, setClonedTitle] = useState('');
+
+
       const session = useAppStore().session;
   const userRole  = session?.role === 2 ?rolesMap[2] : session?.role === 3 ? rolesMap[3]:null;
 
@@ -122,34 +128,6 @@ const requestSendtoOfficer = async () => {
   const filteredRequests = requestdata.filter((req) =>
     req.title.toLowerCase().includes(search.toLowerCase())
   );
-
-//  const getActions = (status: Request['status']) => {
-//   if (userRole === 'Reader') {
-//     switch (status) {
-//       case 'Draft':
-//         return ['Clone', 'Send for Signature', 'Delete'];
-//       case 'Delegated':
-//         return ['Clone', 'Sign'];
-//       case 'Ready for Dispatch':
-//         return ['Clone', 'Print', 'Download All (ZIP)', 'Dispatch'];
-//       case 'Waited for Signature':
-//         return ['Clone'];
-//       default:
-//         return [];
-//     }
-//   } else {
-//     // Officer actions based on officeraction
-//     switch (req.officeraction) {
-//       case 'Pending':
-//         return ['Sign'];
-//       case 'Signed':
-//         return ['Print', 'Dispatch'];
-//       default:
-//         return [];
-//     }
-//   }
-// };
-
 const getActions = (req: Request) => {
   console.log('rew',req);
   if (userRole === 'Reader') {
@@ -169,11 +147,11 @@ const getActions = (req: Request) => {
     // Officer actions based on officeraction
     switch (req.actions) {
       case 'Draft':
-        return ['Clone','Sign'];
+        return ['Clone','Sign','Delegate'];
       case 'Submited':
         return['Clone','Print']
       case 'Pending':
-        return ['Clone','Sign','Delegate'];
+        return ['Clone','Submit','Print All'];
       case 'Signed':
         return ['Clone','Print', 'Dispatch'];
       default:
@@ -181,19 +159,21 @@ const getActions = (req: Request) => {
     }
   }
 };
-
-
-  const handleClone = async (request: Request) => {
-   // alert(`Clone clicked for "${request.title}"`);
-
+  const handleCloneSubmit = async () => {
+    if (!cloningRequest) return;
+  
     try {
       const response = await mainClient.request("POST", "/api/request/cloneRequest", {
         data: {
-          requestId: request._id, // Use request._id directly instead of selectedRequest
+          requestId: cloningRequest._id,
+          newTitle: clonedTitle
         },
       });
+  
       if (response.status === 201) {
-        setLoadvar((prev)=>prev+1);
+        setIsCloneModalVisible(false);
+        setCloningRequest(null);
+        setLoadvar((prev) => prev + 1);
       } else {
         alert("Failed to clone request.");
       }
@@ -201,6 +181,13 @@ const getActions = (req: Request) => {
       alert("Failed to clone request.");
     }
   };
+  
+  const handleClone = (request: Request) => {
+    setCloningRequest(request);
+    setClonedTitle(`${request.title}-clone`);
+    setIsCloneModalVisible(true);
+  };
+  
 
   const handleSendForSignature = (request: Request) => {
     setSelectedRequest(request);
@@ -279,6 +266,7 @@ const getActions = (req: Request) => {
         return handleDownloadZip(request);
       case 'Dispatch':
         return handleDispatch(request);
+        
       default:
         console.warn(`No handler for action: ${action}`);
     }
@@ -334,6 +322,24 @@ const getActions = (req: Request) => {
     navigate(`/dashboard/request/${id}`);
   };
 
+  const PreviewReq = async (requestId: string): Promise<void> => {
+    try {
+      const response = await mainClient.request("POST", "/api/request/templateDownload", {
+        responseType: "blob",
+        data: { requestId },
+      });
+  
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const url = window.URL.createObjectURL(blob);
+      window.open(url, "_blank");
+    } catch (err) {
+      console.error("Error downloading template:", err);
+      alert("Something went wrong while opening the template.");
+    }
+  };
+  
+  
+  
   return (
     <div className="p-4">
       <h2 className="text-lg font-bold mb-4">{userRole === 'Reader' ? "Reader Dashboard" :"Officer Dashboard"}</h2>
@@ -367,7 +373,7 @@ const getActions = (req: Request) => {
         <tbody>
           {filteredRequests.map((req) => (
             <tr key={req._id} className="border-t hover:bg-gray-100">
-              <td className="p-2 text-blue-600 cursor-pointer" onClick={() => alert(`Previewing ${req.title}`)}>{req.title}</td>
+              <td className="p-2 text-blue-600 cursor-pointer" onClick={() => PreviewReq(req._id)}>{req.title}</td>
               <td className="p-2 cursor-pointer" onClick={() => openrequest(req._id)}>{req.numberOfDocuments}</td>
               <td className="p-2 cursor-pointer text-red-500" onClick={() => alert(`Rejected Docs: ${req.rejectedDocuments}`)}>{req.rejectedDocuments}</td>
               <td className="p-2">{req.createdAt}</td>
@@ -375,26 +381,15 @@ const getActions = (req: Request) => {
                {userRole === 'Reader' ? req.status : req.actions}
               </td>
               <td className="p-2 flex flex-wrap gap-2">
-                {/* if userRole === 'Reader' then show this else officer action */}
-                {/* {getActions(req.status).map((action) => (
-                  <button
-                    key={action}
-                    className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
-                    onClick={() => handleClick(action, req)}
-                  >
-                    {action}
-                  </button>
-                ))} */}
                 {getActions(req).map((action) => (
-  <button
-    key={action}
-    className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
-    onClick={() => handleClick(action, req)}
-  >
-    {action}
-  </button>
-))}
-
+                 <button
+                  key={action}
+                  className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
+                  onClick={() => handleClick(action, req)}
+                  >
+                 {action}
+                 </button>
+                ))}
               </td>
             </tr>
           ))}
@@ -510,6 +505,23 @@ const getActions = (req: Request) => {
 </div>
 
       </Modal>
+      <Modal
+  title="Clone Request"
+  open={isCloneModalVisible}
+  onCancel={() => setIsCloneModalVisible(false)}
+  onOk={handleCloneSubmit}
+  okText="Clone"
+>
+  <div>
+    <label className="block mb-2 font-medium">New Request Title</label>
+    <Input
+      value={clonedTitle}
+      onChange={(e) => setClonedTitle(e.target.value)}
+      className="w-full"
+    />
+  </div>
+</Modal>
+
     </div>
   );
 };
