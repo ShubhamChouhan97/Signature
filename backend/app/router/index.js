@@ -9,7 +9,9 @@ const router = Router();
 // console all incoming request
 router.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
+    console.log("res");
     next();
+   
   });
 
 

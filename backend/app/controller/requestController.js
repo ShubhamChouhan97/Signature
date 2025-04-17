@@ -11,6 +11,13 @@ import Bulkdata from "../models/bulkdata.js";
 import convert from 'docx-pdf';
 import ExcelJS from 'exceljs';
 import mongoose from "mongoose";
+import { promisify } from "util"; // Assuming this is your converter/ adjust this import as per your file
+import pkg from "uuid";
+const { v4: uuidv4 } = pkg;
+
+import os from "os";
+
+const unlinkAsync = promisify(fs.unlink);
 
 
 const extractTags = (docxBuffer) => {
@@ -81,49 +88,58 @@ export const allrequest = async (req, res) => {
     }
   };
 
-  export const templateDownload = async (req, res) => {
-    const { requestId } = req.body;
-  
-    if (!requestId) {
-      return res.status(400).json({ error: "Request ID is required." });
+export const templateDownload = async (req, res) => {
+  const { requestId } = req.body;
+
+  if (!requestId) {
+    return res.status(400).json({ error: "Request ID is required." });
+  }
+
+  try {
+    const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ error: "Request not found." });
     }
-  
-    try {
-      const request = await Request.findById(requestId);
-      if (!request) {
-        return res.status(404).json({ error: "Request not found." });
+
+    const fileRelativePath = request.tempaltefile;
+    if (!fileRelativePath) {
+      return res.status(400).json({ error: "No template file associated with this request" });
+    }
+
+    const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
+
+    if (!fs.existsSync(inputPath)) {
+      return res.status(404).json({ error: "Template file not found" });
+    }
+
+    const tempOutputPath = path.join(os.tmpdir(), `${uuidv4()}.pdf`);
+
+    convert(inputPath, tempOutputPath, async function (err, result) {
+      if (err) {
+        console.error("Conversion error:", err);
+        return res.status(500).json({ error: "Conversion failed" });
       }
-  
-      const fileRelativePath = request.tempaltefile;
-      if (!fileRelativePath) {
-        return res.status(400).json({ error: "No template file associated with this request" });
-      }
-  
-      const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
-  
-      if (!fs.existsSync(inputPath)) {
-        return res.status(404).json({ error: "Template file not found" });
-      }
-  
-      const outputPath = inputPath.replace(/\.docx$/, ".pdf");
-  
-      // ✅ Convert DOCX to PDF
-      convert(inputPath, outputPath, function (err, result) {
-        if (err) {
-          console.error("Conversion error:", err);
-          return res.status(500).json({ error: "Conversion failed" });
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'inline; filename="template.pdf"');
+
+      const stream = fs.createReadStream(tempOutputPath);
+      stream.pipe(res);
+
+      stream.on("close", async () => {
+        try {
+          await unlinkAsync(tempOutputPath); // delete after streaming
+        } catch (err) {
+          console.warn("Failed to delete temp file:", err);
         }
-  
-        // ✅ Send converted PDF file
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", 'inline; filename="template.pdf"');
-        fs.createReadStream(outputPath).pipe(res);
       });
-    } catch (err) {
-      console.error("Error downloading template:", err);
-      res.status(500).json({ error: "Internal Server Error" });
-    }
-  };
+    });
+  } catch (err) {
+    console.error("Error downloading template:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 export const templateExcelDownload = async (req, res) => {
   const { requestId } = req.body;
 
@@ -272,6 +288,7 @@ export const bulkUpload = async (req, res) => {
       });
     
       dynamicRow['status'] = 'Unsigned';
+      dynamicRow['deleteFlag'] = 'false';
       return dynamicRow;
     });
 
@@ -313,24 +330,27 @@ export const bulkUpload = async (req, res) => {
     const placeholder = request.placeholders;
   res.status(200).json(placeholder);
   }
-
-  export const tabledata = async (req,res)=>{
+export const tabledata = async (req, res) => {
+  try {
     const { requestId } = req.body;
-    // console.log("req",requestId);
     const request = await Request.findById(requestId);
 
     const bulkdataId = request.bulkdataId;
-    // console.log("bul",bulkdataId);
     const bulk = await Bulkdata.findById(bulkdataId);
     const data = bulk.parsedData;
-    // add bulk id in data
-
-    const datavar = []
-    datavar.push(data);
+    // Filter only entries where deleteFlag is 'false'
+    const filteredData = data.filter(entry => entry.get('deleteFlag') === 'false');
+    // Send filtered data and bulk id
+    const datavar = [];
+    datavar.push(filteredData);
     datavar.push(bulk._id);
 
     res.status(200).json(datavar);
+  } catch (error) {
+    console.error("Error in tabledata:", error);
+    res.status(500).json({ message: "Server Error" });
   }
+};
 
   export const sendtoofficer = async (req,res) =>{
     const { requestId,officerId,officerName } = req.body;
@@ -449,3 +469,92 @@ export const PreviewRequest = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
+
+export const RejectRequestOfficer = async (req, res) => {
+  const userRole = req.session.role;
+  if (userRole === 2) {
+    try {
+      const {requestId, rowId, bulkdataId } = req.body;
+      
+      const request = await Request.findById(requestId);
+      if (!request) return res.status(404).json({ error: "Request not found."
+        });
+        request.rejectedDocuments++;
+
+      const bulk = await Bulkdata.findById(bulkdataId);
+      if (!bulk || !Array.isArray(bulk.parsedData)) {
+        return res.status(404).json({ error: "Bulk data not found or malformed." });
+      }
+
+      const mapArray = bulk.parsedData;
+      // Convert Maps to plain objects (if needed) or access using Map methods
+      const rowIndex = mapArray.findIndex(item => 
+        item instanceof Map && item.get('_id')?.toString() === rowId
+      );
+
+      if (rowIndex === -1) {
+        return res.status(404).json({ error: "Row not found." });
+      }
+
+      mapArray[rowIndex].set('status', 'Rejected');
+
+      bulk.markModified('parsedData'); // Tell Mongoose that a nested field has changed
+      await bulk.save(); // Save changes
+      await request.save();
+      return res.status(200).json({ message: "Status updated successfully." });
+
+    } catch (err) {
+      console.error("Error in RejectRequestOfficer:", err);
+      return res.status(500).json({ error: "Internal Server Error", details: err.message });
+    }
+  } else {
+    return res.status(403).json({ error: "Unauthorized access" });
+  }
+};
+
+export const DeleteRequestOfficer = async (req,res) =>{
+  const userRole = req.session.role;
+  if (userRole === 3) {
+    try {
+      const { requestId,rowId, bulkdataId } = req.body;
+
+       
+      const request = await Request.findById(requestId);
+      if (!request) return res.status(404).json({ error: "Request not found."
+        });
+        request.numberOfDocuments--;
+        
+       
+      const bulk = await Bulkdata.findById(bulkdataId);
+      if (!bulk || !Array.isArray(bulk.parsedData)) {
+        return res.status(404).json({ error: "Bulk data not found or malformed." });
+      }
+
+      const mapArray = bulk.parsedData;
+      // console.log("array", mapArray);
+
+      // Convert Maps to plain objects (if needed) or access using Map methods
+      const rowIndex = mapArray.findIndex(item => 
+        item instanceof Map && item.get('_id')?.toString() === rowId
+      );
+
+      if (rowIndex === -1) {
+        return res.status(404).json({ error: "Row not found." });
+      }
+
+      mapArray[rowIndex].set('deleteFlag', 'true');
+
+      bulk.markModified('parsedData'); // Tell Mongoose that a nested field has changed
+      await bulk.save(); // Save changes
+      await request.save();
+      return res.status(200).json({ message: "Status updated successfully." });
+
+    } catch (err) {
+      console.error("Error in RejectRequestOfficer:", err);
+      return res.status(500).json({ error: "Internal Server Error", details: err.message });
+    }
+  } else {
+    return res.status(403).json({ error: "Unauthorized access" });
+  }
+}

@@ -19,6 +19,17 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage });
+// File filter to accept only Word files
+const fileFilter = (req, file, cb) => {
+  const allowedExtensions = ['.doc', '.docx'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedExtensions.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only Word documents (.doc, .docx) are allowed!'), false);
+  }
+};
+
+const upload = multer({ storage, fileFilter });
 
 export default upload;

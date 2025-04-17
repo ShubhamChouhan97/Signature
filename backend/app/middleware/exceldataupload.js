@@ -19,6 +19,15 @@ const storage = multer.diskStorage({
   }
 });
 
-const uploadexcel = multer({ storage });
+const fileFilter = (req, file, cb) => {
+  const allowedExtensions = ['.xls','.xlsx','.csv'];
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedExtensions.includes(ext)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Only Excel documents are allowed!'), false);
+  }
+};
+const uploadexcel = multer({ storage ,fileFilter});
 
 export default uploadexcel;

@@ -7,6 +7,7 @@ import { createSocketServer } from './app/config/socket.js';
 import app, { sessionMiddleware } from './app/index.js';
 
 const server = createServer(app);
+
 const io = createSocketServer(server);
 io.engine.use(sessionMiddleware);
 

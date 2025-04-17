@@ -18,17 +18,17 @@ const schema = new mongoose.Schema({
         type: Number,
         default: status.active,
     },
-    createdBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: true,
-    },
-    updatedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        required: true,
-    },
-    deletedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-    },
+    // createdBy: {
+    //     type: mongoose.Schema.Types.ObjectId,
+    //     required: true,
+    // },
+    // updatedBy: {
+    //     type: mongoose.Schema.Types.ObjectId,
+    //     required: true,
+    // },
+    // deletedBy: {
+    //     type: mongoose.Schema.Types.ObjectId,
+    // },
 }, { timestamps: true, });
 
 schema.index({ id: 1 }, { background: true, unique: true });
