@@ -9,6 +9,7 @@ import app, { sessionMiddleware } from './app/index.js';
 const server = createServer(app);
 
 const io = createSocketServer(server);
+app.set("io", io);
 io.engine.use(sessionMiddleware);
 
 const port = argvMap.get('port') ?? 3000;

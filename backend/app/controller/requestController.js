@@ -14,7 +14,7 @@ import mongoose from "mongoose";
 import { promisify } from "util"; // Assuming this is your converter/ adjust this import as per your file
 import pkg from "uuid";
 const { v4: uuidv4 } = pkg;
-
+import { io } from '../config/socket.js';
 import os from "os";
 
 const unlinkAsync = promisify(fs.unlink);
@@ -65,7 +65,7 @@ export const allrequest = async (req, res) => {
     try {
       const userId = req.session.userId;
       const userRole = req.session.role;
-     // console.log('role',userRole);
+      // console.log('role',userId);
       let requests;
       // Find all requests where 'createdBy' equals the current user's ID
       if (userRole === 3) {
@@ -361,6 +361,14 @@ export const tabledata = async (req, res) => {
      request.status = 'Waited for Signature';
      request.actions= 'Draft';
      await request.save();
+
+     io.emit('request-officer', {
+      requestId,
+      officerId,
+      officerName,
+      status: request.status,
+    });
+  
     res.status(200).json("Sended to Officer");
   }
 
@@ -377,7 +385,7 @@ export const tabledata = async (req, res) => {
       const userRole = req.session.role;
     try {
       const { requestId,newTitle } = req.body;
-      console.log("Request ID to clone:", requestId);
+      //console.log("Request ID to clone:", requestId);
   
       // Use findById to get a single document
       const originalRequest = await Request.findById(requestId);
@@ -557,4 +565,36 @@ export const DeleteRequestOfficer = async (req,res) =>{
   } else {
     return res.status(403).json({ error: "Unauthorized access" });
   }
+}
+
+export const DelegateRequest = async(req,res)=>{
+  const { requestId} = req.body;
+  const userRole = req.session.role;
+  if (userRole === 2) {
+    try {
+
+      const request = await Request.findById(requestId);
+
+      if (!request) return res.status(404).json({ error: "Request not found."});
+         request.status = 'Delegated';
+         request.actions = 'Delegated';
+    
+        await request.save();
+    const readerId = request.createdById
+ io.emit('request-reader', {
+  readerId,
+    });
+        return res.status(200).json({ message: "Request delegated successfully." });
+        }catch (err) {
+          console.error("Error in DelegateRequest:", err);
+          return res.status(500).json({ error: "Internal Server Error" });
+        }
+  
+}else{
+  return res.status(403).json({ error: "Unauthorized access" });
+}
+}
+
+export const SignRequest = async()=>{
+  
 }

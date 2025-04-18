@@ -12,6 +12,7 @@ const Signatures: React.FC = () => {
 const [loadvar,setLoadvar] = useState(false);
 const [signatures, setSignatures] = useState<string[]>([]); // URLs of the signatures
 const baseUrl = import.meta.env.VITE_BACKEND_URL;
+
 const fetchData = async () => {
   try {
     const response = await mainClient.request("GET", "/api/signatures/allSign");
@@ -96,17 +97,23 @@ const fetchData = async () => {
       </div>
 
       <div>
-        <h3 className="text-lg font-semibold mb-2">Signature Library</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-  {signatures.map((url, index) => (
-    <div key={index} className="border rounded p-2 flex items-center justify-center">
-
-      <img src={url} alt={`Signature ${index + 1}`} className="max-h-32 object-contain" />
-    </div>
-  ))}
+  <h3 className="text-lg font-semibold mb-2">Signature Library</h3>
+  <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+    {signatures.map((url, index) => (
+      <div
+        key={index}
+        className="border rounded p-1 flex items-center justify-center w-64 h-64" // Fixed width & height
+      >
+        <img
+          src={url}
+          alt={`Signature ${index + 1}`}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
+    ))}
+  </div>
 </div>
 
-      </div>
 
       <Modal
         title="Preview Signature"

@@ -13,7 +13,10 @@ import { UploadOutlined } from "@ant-design/icons";
 import { mainClient, useAppStore } from "../store";
 import { useNavigate } from "react-router";
 import { rolesMap } from '../libs/statusMap';
-import { Session } from 'inspector/promises';
+import { io } from 'socket.io-client';
+const socket = io("http://localhost:3000", {
+  withCredentials: true
+});
 
 interface Request {
   _id: string;
@@ -22,7 +25,7 @@ interface Request {
   rejectedDocuments: number;
   createdAt: string;
   status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature';
-  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' ;
+  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' ;
 }
 
 const actionButtonColors: Record<string, string> = {
@@ -34,6 +37,7 @@ const actionButtonColors: Record<string, string> = {
   'Download All (ZIP)': 'bg-purple-600 hover:bg-purple-700 text-white',
   Dispatch: 'bg-green-400 hover:bg-green-700 text-white',
   Delegate: 'bg-cyan-600 hover:bg-cyan-700 text-white',
+  "No Action Allow" :'bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600',
 };
 
 const Requests: React.FC = () => {
@@ -45,7 +49,6 @@ const Requests: React.FC = () => {
   const [requestdata, setRequest] = useState<Request[]>([]);
   const [loadvar,setLoadvar] = useState(0);
   // officer data 
-  const [officerLoading, setOfficerLoading] = useState(false); // Loading state for officer data
   const [officerData, setOfficerData] = useState<{ label: string, value: string }[]>([]); // Officer data state
   
 
@@ -60,13 +63,41 @@ const Requests: React.FC = () => {
   const [cloningRequest, setCloningRequest] = useState<Request | null>(null);
   const [clonedTitle, setClonedTitle] = useState('');
 
-
+  // Signature
+  const [signatures, setSignatures] = useState<string[]>([]);
+  const [signRequest ,setSignRequest] =useState<Request | null>(null);
+  const [issSignModalVisible, setIsSignModalVisible] = useState(false);
+// user Deatils
       const session = useAppStore().session;
+      const myId=useAppStore().session?.userId;
   const userRole  = session?.role === 2 ?rolesMap[2] : session?.role === 3 ? rolesMap[3]:null;
 
+  // socket 
+  useEffect(() => {
+    socket.on('request-officer', (data) => {
+      if(myId === data.officerId){
+        setLoadvar((prev)=>prev+1);
+     }
+    });
+
+    return () => {
+      socket.off('request-officer');
+    };
+  }, []);
+
+  useEffect(() => {
+    socket.on('request-reader', (data) => {
+      if(myId === data.readerId){
+        setLoadvar((prev)=>prev+1);
+     }
+    });
+
+    return () => {
+      socket.off('request-reader');
+    };
+  }, []);
 
   const fetchData = async () => {
-    setLoading(true);
     try {
       const response = await mainClient.request("GET", "/api/request/allrequest");
       const data = Array.isArray(response.data) ? response.data : [];
@@ -80,10 +111,17 @@ const Requests: React.FC = () => {
     fetchData();
   }, [loadvar]);
 
-
+const fetchSign = async () => {
+  try {
+    const response = await mainClient.request("GET", "/api/signatures/allSign");
+    const data = response.data;
+    setSignatures(data.map((item: any) => `http://localhost:3000/${item.url}`)); 
+  } catch (error) {
+    console.error("Error fetching signatures:", error);
+  }
+};
   // Function to get officer selection 
   const handleOfficerSelectClick = async () => {
-    setOfficerLoading(true); // Start loading indicator
     try {
       const response = await mainClient.request("GET", "api/users/officer");
       const officerOptions = response.data.map((officer: { name: string, id: string }) => ({
@@ -94,9 +132,7 @@ const Requests: React.FC = () => {
    setOfficerData(officerOptions); // Set the fetched officer data
     } catch (error) {
       console.error("Error fetching officer data:", error);
-    } finally {
-      setOfficerLoading(false); // Stop loading indicator
-    }
+    } 
   }
 // function to send Request to officer
 const requestSendtoOfficer = async () => {
@@ -125,7 +161,6 @@ const requestSendtoOfficer = async () => {
     req.title.toLowerCase().includes(search.toLowerCase())
   );
 const getActions = (req: Request) => {
-  console.log('rew',req);
   if (userRole === 'Reader') {
     switch (req.status) {
       case 'Draft':
@@ -150,6 +185,8 @@ const getActions = (req: Request) => {
         return ['Clone','Submit','Print All'];
       case 'Signed':
         return ['Clone','Print', 'Dispatch'];
+        case 'Delegated':
+        return ['No Action Allow'];
       default:
         return [];
     }
@@ -232,10 +269,32 @@ const getActions = (req: Request) => {
   };
   
 
-  const handleSign = (request: Request) => {
-    alert(`Sign clicked for "${request.title}"`);
+  const handleSign = async (request: Request) => {
+    await fetchSign();
+    setSignRequest(request);
+    setIsSignModalVisible(true);
   };
 
+ const handleSubmitSign = async()=>{
+if(!signRequest){
+  return;
+}
+try {
+  const response = await mainClient.request("POST", "/api/request/SignRequest", {
+    data: {
+      requestId: signRequest._id, // Use request._id directly instead of selectedRequest
+    },
+  });
+  if (response.status === 200) {
+    setLoadvar((prev)=>prev+1);
+  } else {
+    message.error("Failed to Sign request.");
+  }
+} catch (error) {
+  message.error("Failed to Sign request.");
+}
+
+ }
   const handlePrint = (request: Request) => {
     alert(`Print clicked for "${request.title}"`);
   };
@@ -247,6 +306,24 @@ const getActions = (req: Request) => {
   const handleDispatch = (request: Request) => {
     alert(`Dispatch clicked for "${request.title}"`);
   };
+
+  const handleDelegate =  async(request : Request)=>{
+    try {
+      const response = await mainClient.request("POST", "/api/request/DelegateRequest", {
+        data: {
+          requestId: request._id, // Use request._id directly instead of selectedRequest
+        },
+      });
+      if (response.status === 200) {
+        setLoadvar((prev)=>prev+1);
+        message.success('Request Delegated Successfully')
+      } else {
+        message.error("Failed to Delegate request.");
+      }
+    } catch (error) {
+      message.error("Failed to Delegate request.");
+    }
+  }
 
   const handleClick = (action: string, request: Request) => {
     switch (action) {
@@ -264,6 +341,8 @@ const getActions = (req: Request) => {
         return handleDownloadZip(request);
       case 'Dispatch':
         return handleDispatch(request);
+        case 'Delegate':
+        return handleDelegate(request);
         
       default:
         console.warn(`No handler for action: ${action}`);
@@ -518,6 +597,34 @@ const getActions = (req: Request) => {
       className="w-full"
     />
   </div>
+</Modal>
+<Modal
+  open={issSignModalVisible}
+  onCancel={() => setIsSignModalVisible(false)}
+  onOk={async () => {
+    await handleSubmitSign(); // Add your logic here
+  }}
+  okText="Submit"
+  cancelText="Cancel"
+>
+  {signatures.length > 0 ? (
+    <div className="flex flex-wrap gap-4 justify-center">
+      {signatures.map((url, index) => (
+        <div
+          key={index}
+          className="border rounded p-1 flex items-center justify-center w-40 h-40"
+        >
+          <img
+            src={url}
+            alt={`Signature ${index + 1}`}
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="text-center text-gray-500">No signatures available</div>
+  )}
 </Modal>
 
     </div>

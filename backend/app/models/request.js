@@ -84,7 +84,7 @@ const RequestSchema = new mongoose.Schema({
   },
   actions: {
         type: String,
-        enum: ['Draft', 'Pending', 'Signed', 'Submited'],
+        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated'],
         default: 'Draft',
     },
 });
