@@ -1,0 +1,9 @@
+node_modules
+.env
+data/document/*
+data/signature/*
+data/exceldata/*
+data/document_tar/*
+data/request_document/*
+data/merged_document/*
+uploads/
