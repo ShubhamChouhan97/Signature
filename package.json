@@ -1,6 +1,0 @@
-{
-  "dependencies": {
-    "docx-pdf": "^0.0.1",
-    "uuid": "^11.1.0"
-  }
-}
