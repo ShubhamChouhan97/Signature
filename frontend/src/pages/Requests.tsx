@@ -24,10 +24,14 @@ interface Request {
   numberOfDocuments: number;
   rejectedDocuments: number;
   createdAt: string;
-  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature';
-  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' ;
+  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature'|'Rejected';
+  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' | 'Rejected' ;
 }
 
+type Signature = {
+  _id: string;
+  url: string;
+};
 const actionButtonColors: Record<string, string> = {
   Clone: 'bg-gray-500 hover:bg-gray-600 text-white',
   'Send for Signature': 'bg-blue-600 hover:bg-blue-700 text-white',
@@ -38,6 +42,7 @@ const actionButtonColors: Record<string, string> = {
   Dispatch: 'bg-green-400 hover:bg-green-700 text-white',
   Delegate: 'bg-cyan-600 hover:bg-cyan-700 text-white',
   "No Action Allow" :'bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600',
+  Reject:'bg-red-600 hover:bg-red-700 text-white',
 };
 
 const Requests: React.FC = () => {
@@ -57,6 +62,11 @@ const Requests: React.FC = () => {
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [selectedOfficer, setselectedOfficer] = useState<string | undefined>();
   const [searchUser, setSearchUser] = useState('');
+  const [selectedSignature, setSelectedSignature] = useState<Signature | null>(null);
+
+// Otp Modal 
+const [isOtpModalVisible, setIsOtpModalVisible] = useState(false);
+const [otp, setOtp] = useState("");
 
   // Request Clone 
   const [isCloneModalVisible, setIsCloneModalVisible] = useState(false);
@@ -64,7 +74,7 @@ const Requests: React.FC = () => {
   const [clonedTitle, setClonedTitle] = useState('');
 
   // Signature
-  const [signatures, setSignatures] = useState<string[]>([]);
+  const [signatures, setSignatures] = useState<Signature[]>([]);
   const [signRequest ,setSignRequest] =useState<Request | null>(null);
   const [issSignModalVisible, setIsSignModalVisible] = useState(false);
 // user Deatils
@@ -111,11 +121,25 @@ const Requests: React.FC = () => {
     fetchData();
   }, [loadvar]);
 
+// const fetchSign = async () => {
+//   try {
+//     const response = await mainClient.request("GET", "/api/signatures/allSign");
+//     const data = response.data;
+//     setSignatures(data.map((item: any) => `http://localhost:3000/${item.url}`)); 
+//   } catch (error) {
+//     console.error("Error fetching signatures:", error);
+//   }
+// };
 const fetchSign = async () => {
   try {
     const response = await mainClient.request("GET", "/api/signatures/allSign");
     const data = response.data;
-    setSignatures(data.map((item: any) => `http://localhost:3000/${item.url}`)); 
+    setSignatures(
+      data.map((item: any) => ({
+        _id: item._id,
+        url: `http://localhost:3000/${item.url}`,
+      }))
+    );
   } catch (error) {
     console.error("Error fetching signatures:", error);
   }
@@ -171,6 +195,8 @@ const getActions = (req: Request) => {
         return ['Clone', 'Print', 'Download All (ZIP)', 'Dispatch'];
       case 'Waited for Signature':
         return ['Clone'];
+        case 'Rejected':
+        return ['Clone'];
       default:
         return [];
     }
@@ -178,7 +204,7 @@ const getActions = (req: Request) => {
     // Officer actions based on officeraction
     switch (req.actions) {
       case 'Draft':
-        return ['Clone','Sign','Delegate'];
+        return ['Clone','Sign','Delegate','Reject'];
       case 'Submited':
         return['Clone','Print']
       case 'Pending':
@@ -187,6 +213,8 @@ const getActions = (req: Request) => {
         return ['Clone','Print', 'Dispatch'];
         case 'Delegated':
         return ['No Action Allow'];
+        case 'Rejected':
+          return ['No Action Allow'];
       default:
         return [];
     }
@@ -255,7 +283,7 @@ const getActions = (req: Request) => {
     try {
       const response = await mainClient.request("POST", "/api/request/deleteRequest", {
         data: {
-          requestId: request._id, // Use request._id directly instead of selectedRequest
+          requestId: request._id, 
         },
       });
       if (response.status === 200) {
@@ -268,36 +296,257 @@ const getActions = (req: Request) => {
     }
   };
   
+const signatureRequestSubmit = async () =>{
+  if(!signRequest){
+    return;
+  }
+  if(!selectedSignature){
+    return;
+  }
+  try {
+    const response = await mainClient.request("POST", "/api/signatures/SignRequest", {
+      data: {
+        requestId: signRequest._id, 
+        signtureId:selectedSignature._id,
+      },
+    });
+    if (response.status === 200) {
+     message.success("All Document Sign ");
+     setLoadvar((prev)=>prev+1);
+      
+    } else {
+      message.error("Failed to Sign Documents.");
+    }
+  } catch (error) {
+    message.error("Failed to Sign Document At server server.");
+  }
+}
 
-  const handleSign = async (request: Request) => {
+   const handleSign = async (request: Request) => {
     await fetchSign();
     setSignRequest(request);
     setIsSignModalVisible(true);
   };
 
- const handleSubmitSign = async()=>{
+  const handleOtpVerified = async () => {
+    try {
+      const response = await mainClient.request("POST", "/api/signatures/SignRequestOtpVerify", {
+        data: {
+          otp: otp, 
+        },
+      });
+      if (response.status === 200) {
+       message.success("Otp Verified Sigin Started ");
+        setIsOtpModalVisible(false);
+        setIsSignModalVisible(false);
+        signatureRequestSubmit();
+      } else {
+        message.error("Failed to Verify OTP.");
+      }
+    } catch (error) {
+      message.error("Failed to Verify OTP at server.");
+    }
+    setOtp('');
+  };
+
+ const handleSubmitSignForOtp = async()=>{
+  if (!selectedSignature) {
+  message.warning("Please select a signature before submitting.");
+  return;
+}
 if(!signRequest){
   return;
 }
-try {
-  const response = await mainClient.request("POST", "/api/request/SignRequest", {
-    data: {
-      requestId: signRequest._id, // Use request._id directly instead of selectedRequest
-    },
-  });
-  if (response.status === 200) {
-    setLoadvar((prev)=>prev+1);
-  } else {
-    message.error("Failed to Sign request.");
-  }
-} catch (error) {
-  message.error("Failed to Sign request.");
-}
+setIsOtpModalVisible(true);
 
  }
-  const handlePrint = (request: Request) => {
-    alert(`Print clicked for "${request.title}"`);
-  };
+
+
+// const openPrintPreview = (parsedData: Record<string, any>[]) => {
+//   const printWindow = window.open('', '_blank');
+
+//   const content = parsedData.map((item: Record<string, any>, index: number) => {
+//     const entries = Object.entries(item);
+
+//     const entryHtml = entries.map(([key, value]) => {
+//       if (
+//         key.toLowerCase() === "signature" &&
+//         typeof value === "string" &&
+//         value.endsWith(".jpg")
+//       ) {
+//         return `<p><strong>${key}:</strong><br><img src="${window.location.origin}/${value}" height="50"/></p>`;
+//       }
+//       return `<p><strong>${key}:</strong> ${value}</p>`;
+//     }).join("");
+
+//     return `
+//       <div class="print-page">
+//         <h3>Record ${index + 1}</h3>
+//         ${entryHtml}
+//       </div>
+//     `;
+//   }).join("");
+
+//   printWindow?.document.write(`
+//     <html>
+//       <head>
+//         <title>Print Preview</title>
+//         <style>
+//           body {
+//             font-family: Arial, sans-serif;
+//             padding: 20px;
+//           }
+//           h3 {
+//             margin-top: 0;
+//           }
+//           .print-page {
+//             page-break-after: always;
+//             margin-bottom: 50px;
+//           }
+//           .print-page:last-child {
+//             page-break-after: auto;
+//           }
+//         </style>
+//       </head>
+//       <body>
+//         <h1>Bulk Print Data</h1>
+//         ${content}
+//         <script>
+//           window.onload = function() {
+//             window.print();
+//           };
+//         </script>
+//       </body>
+//     </html>
+//   `);
+
+//   printWindow?.document.close();
+// };
+
+const openPrintPreview = (parsedData: Record<string, any>[]) => {
+  const printWindow = window.open('', '_blank');
+
+  const SERVER_URL = "http://localhost:3000"; // your backend server's URL
+
+  const content = parsedData.map((item: Record<string, any>, index: number) => {
+    const entries = Object.entries(item);
+
+    const entryHtml = entries.map(([key, value]) => {
+      if (
+        key.toLowerCase() === "signature" &&
+        typeof value === "string" &&
+        (value.endsWith(".jpg") || value.endsWith(".jpeg") || value.endsWith(".png"))
+      ) {
+        // Normalize backslashes and construct full image URL
+        const normalizedPath = value.replace(/\\/g, "/");
+        const imageUrl = `${SERVER_URL}/${normalizedPath}`;
+
+        return `<p><strong>${key}:</strong><br><img src="${imageUrl}" height="50" alt="Signature Image"/></p>`;
+      }
+
+      return `<p><strong>${key}:</strong> ${value}</p>`;
+    }).join("");
+
+    return `
+      <div class="print-page">
+        <h3>Record ${index + 1}</h3>
+        ${entryHtml}
+      </div>
+    `;
+  }).join("");
+
+  printWindow?.document.write(`
+    <html>
+      <head>
+        <title>Print Preview</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+          }
+          h3 {
+            margin-top: 0;
+          }
+          .print-page {
+            page-break-after: always;
+            margin-bottom: 50px;
+          }
+          .print-page:last-child {
+            page-break-after: auto;
+          }
+          img {
+            max-width: 100%;
+            max-height: 100px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Bulk Print Data</h1>
+        ${content}
+        <script>
+          window.onload = function() {
+            window.print();
+          };
+        </script>
+      </body>
+    </html>
+  `);
+
+  printWindow?.document.close();
+};
+
+
+//  const handlePrint = async (request: Request) => {
+//   try {
+//     message.loading({ content: `Printing "${request.title}"...`, key: 'print' });
+
+//     const response = await mainClient.request("POST", "/api/request/printRequest", {
+//       data: {
+//         requestId: request._id,
+//       },
+//     });
+
+//     if (response.status === 200) {
+//       message.success({ content: 'Print started successfully.', key: 'print' });
+//       const { parsedData } = response.data;
+//       openPrintPreview(parsedData); // just send it to preview
+//       message.success({ content: 'Print data loaded.', key: 'print' });
+//     } else {
+//       message.error({ content: 'Failed to initiate print.', key: 'print' });
+//     }
+//   } catch (error) {
+//     console.error("Print error:", error);
+//     message.error({ content: 'Server error while trying to print.', key: 'print' });
+//   }
+// };
+
+const handlePrint = async (request: Request) => {
+  try {
+    message.loading({ content: `Printing "${request.title}"...`, key: 'print' });
+    const response = await mainClient.request("POST", "/api/request/printRequest", {
+            data: {
+              requestId: request._id,
+            },
+      responseType: "blob",
+          });
+    if (response.status === 200) {
+      const blob = new Blob([response.data]); // 👈 Access response.data, not .blob()
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `print-${request.title}.zip`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      message.success({ content: 'Download started.', key: 'print' });
+    } else {
+      message.error({ content: 'Failed to download.', key: 'print' });
+    }
+  } catch (error) {
+    console.error("Print error:", error);
+    message.error({ content: 'Server error while trying to print.', key: 'print' });
+  }
+};
 
   const handleDownloadZip = (request: Request) => {
     alert(`Download All (ZIP) clicked for "${request.title}"`);
@@ -307,6 +556,23 @@ try {
     alert(`Dispatch clicked for "${request.title}"`);
   };
 
+  const handleRejected = async (request :Request)=>{
+    try {
+      const response = await mainClient.request("POST", "/api/request/RejectRequest", {
+        data: {
+          requestId: request._id, // Use request._id directly instead of selectedRequest
+        },
+      });
+      if (response.status === 200) {
+        setLoadvar((prev)=>prev+1);
+        message.success('Request Rejected Successfully')
+      } else {
+        message.error("Failed to Reject request.");
+      }
+    } catch (error) {
+      message.error("Failed to Reject request.");
+    }
+  }
   const handleDelegate =  async(request : Request)=>{
     try {
       const response = await mainClient.request("POST", "/api/request/DelegateRequest", {
@@ -343,7 +609,8 @@ try {
         return handleDispatch(request);
         case 'Delegate':
         return handleDelegate(request);
-        
+        case 'Reject':
+        return handleRejected(request);
       default:
         console.warn(`No handler for action: ${action}`);
     }
@@ -400,6 +667,13 @@ try {
   };
 
   const PreviewReq = async (requestId: string): Promise<void> => {
+      const newWindow = window.open("", "_blank");
+      
+        if (!newWindow) {
+          message.error("Popup blocked! Please allow popups for this site.");
+          return;
+        }
+      
     try {
       const response = await mainClient.request("POST", "/api/request/templateDownload", {
         responseType: "blob",
@@ -408,7 +682,7 @@ try {
   
       const blob = new Blob([response.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
-      window.open(url, "_blank");
+      newWindow.location.href = url;
     } catch (err) {
       console.error("Error downloading template:", err);
       message.error("Something went wrong while opening the template.");
@@ -599,11 +873,27 @@ try {
   </div>
 </Modal>
 <Modal
+  open={isOtpModalVisible}
+  onCancel={() => setIsOtpModalVisible(false)}
+  onOk={handleOtpVerified}
+  okText="Verify OTP"
+  cancelText="Cancel"
+>
+  <div className="space-y-3 text-center">
+    <p className="text-lg font-medium">Enter the OTP sent to your email/phone:</p>
+    <input
+      type="text"
+      value={otp}
+      onChange={(e) => setOtp(e.target.value)}
+      placeholder="Enter OTP"
+      className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+    />
+  </div>
+</Modal>
+{/* <Modal
   open={issSignModalVisible}
   onCancel={() => setIsSignModalVisible(false)}
-  onOk={async () => {
-    await handleSubmitSign(); // Add your logic here
-  }}
+  onOk={async () => { await handleSubmitSignForOtp() }}
   okText="Submit"
   cancelText="Cancel"
 >
@@ -612,7 +902,10 @@ try {
       {signatures.map((url, index) => (
         <div
           key={index}
-          className="border rounded p-1 flex items-center justify-center w-40 h-40"
+          onClick={() => setSelectedSignature(url)}
+          className={`border rounded p-1 flex items-center justify-center w-40 h-40 cursor-pointer ${
+            selectedSignature === url ? "ring-4 ring-blue-400 border-blue-500" : ""
+          }`}
         >
           <img
             src={url}
@@ -625,7 +918,38 @@ try {
   ) : (
     <div className="text-center text-gray-500">No signatures available</div>
   )}
+</Modal> */}
+
+<Modal
+  open={issSignModalVisible}
+  onCancel={() => setIsSignModalVisible(false)}
+  onOk={async () => { await handleSubmitSignForOtp() }}
+  okText="Submit"
+  cancelText="Cancel"
+>
+  {signatures.length > 0 ? (
+    <div className="flex flex-wrap gap-4 justify-center">
+      {signatures.map((signature, index) => (
+        <div
+          key={signature._id || index}
+          onClick={() => setSelectedSignature(signature)}
+          className={`border rounded p-1 flex items-center justify-center w-40 h-40 cursor-pointer ${
+            selectedSignature?._id === signature._id ? "ring-4 ring-blue-400 border-blue-500" : ""
+          }`}
+        >
+          <img
+            src={signature.url}
+            alt={`Signature ${index + 1}`}
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div className="text-center text-gray-500">No signatures available</div>
+  )}
 </Modal>
+
 
     </div>
   );

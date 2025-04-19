@@ -20,7 +20,7 @@ const storage = multer.diskStorage({
 
 const fileFilter = function (req, file, cb) {
   const allowedTypes = /jpg|jpeg|png|bmp/;
-  const ext = path.extname(file.originalname).toLowerCase();
+  const ext = file.originalname.split('.').pop().toLowerCase();
   if (allowedTypes.test(ext)) {
     cb(null, true);
   } else {
@@ -28,7 +28,7 @@ const fileFilter = function (req, file, cb) {
   }
 };
 
-const UploadSign = multer({ storage, fileFilter });
+const UploadSign = multer({ storage: multer.memoryStorage(), fileFilter });
 
 // 👇 Fix: use named export
 export { UploadSign };

@@ -75,7 +75,7 @@ const RequestSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature'],
+    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected'],
     default: 'Draft',
   },
   deleteFlag:{
@@ -84,7 +84,7 @@ const RequestSchema = new mongoose.Schema({
   },
   actions: {
         type: String,
-        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated'],
+        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected'],
         default: 'Draft',
     },
 });

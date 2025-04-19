@@ -16,9 +16,11 @@ import pkg from "uuid";
 const { v4: uuidv4 } = pkg;
 import { io } from '../config/socket.js';
 import os from "os";
-
+import signatures from '../models/signatures.js'
+import court from  '../models/courts.js'
 const unlinkAsync = promisify(fs.unlink);
-
+import ImageModule from "docxtemplater-image-module-free";
+import archiver from 'archiver';
 
 const extractTags = (docxBuffer) => {
     const zip = new PizZip(docxBuffer);
@@ -31,7 +33,7 @@ const extractTags = (docxBuffer) => {
     return [...new Set(
       tags
         .map(tag => tag.replace(/[{}]/g, '').trim()) // Remove curly braces and trim
-        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code') // Exclude specific tags
+        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage') // Exclude specific tags
     )];
   };
   
@@ -76,10 +78,18 @@ export const allrequest = async (req, res) => {
         });
       } else if (userRole === 2) {
         // Officer role: fetch requests where the officer is involved and not marked as deleted
+        // requests = await Request.find({
+        //   'checkofficer.officerId': userId,
+        //   deleteFlag: false,
+        // });
         requests = await Request.find({
-          'checkofficer.officerId': userId,
           deleteFlag: false,
+          $or: [
+            { 'checkofficer.officerId': userId },
+            { createdById: userId }
+          ]
         });
+        
       }
       res.status(200).json(requests);
     } catch (error) {
@@ -413,6 +423,71 @@ export const tabledata = async (req, res) => {
   };
   
 
+// export const PreviewRequest = async (req, res) => {
+//   const { requestId, rowId, bulkdataId } = req.body;
+
+//   if (!requestId || !rowId || !bulkdataId) {
+//     return res.status(400).json({ error: "Missing required fields." });
+//   }
+
+//   try {
+//     const request = await Request.findById(requestId);
+//     if (!request) return res.status(404).json({ error: "Request not found." });
+
+//     const fileRelativePath = request.tempaltefile;
+//     if (!fileRelativePath) return res.status(400).json({ error: "No template file associated with this request." });
+
+//     const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
+//     if (!fs.existsSync(inputPath)) return res.status(404).json({ error: "Template file not found." });
+
+//     const bulk = await Bulkdata.findById(bulkdataId);
+//     if (!bulk || !Array.isArray(bulk.parsedData)) {
+//       return res.status(404).json({ error: "Bulk data not found or malformed." });
+//     }
+
+//     const mapArray = bulk.parsedData;
+//     const rowMap = mapArray.find((row) => row.get("_id").toString() === rowId);
+//     if (!rowMap) return res.status(404).json({ error: "Row data not found." });
+
+//     const rowData = Object.fromEntries(rowMap.entries());
+//     //console.log("Final data to be injected into doc:", rowData);
+
+//     // Load template
+//     const content = fs.readFileSync(inputPath, "binary");
+//     const zip = new PizZip(content);
+//     const doc = new Docxtemplater(zip, {
+//       paragraphLoop: true,
+//       linebreaks: true,
+//     });
+
+//     // ✅ New docxtemplater API usage
+//     doc.render(rowData);
+
+//     const buf = doc.getZip().generate({ type: "nodebuffer" });
+//     const tempDocxPath = path.join(process.cwd(), "temp", `filled_${Date.now()}.docx`);
+//     const outputPath = tempDocxPath.replace(".docx", ".pdf");
+
+//     fs.writeFileSync(tempDocxPath, buf);
+
+//     convert(tempDocxPath, outputPath, function (err) {
+//       fs.unlink(tempDocxPath, () => {});
+//       if (err) {
+//         console.error("Conversion error:", err);
+//         return res.status(500).json({ error: "Conversion failed" });
+//       }
+
+//       res.setHeader("Content-Type", "application/pdf");
+//       res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
+//       fs.createReadStream(outputPath)
+//         .on("end", () => fs.unlink(outputPath, () => {}))
+//         .pipe(res);
+//     });
+//   } catch (err) {
+//     console.error("Error in PreviewRequest:", err);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+// };
+
 export const PreviewRequest = async (req, res) => {
   const { requestId, rowId, bulkdataId } = req.body;
 
@@ -440,17 +515,31 @@ export const PreviewRequest = async (req, res) => {
     if (!rowMap) return res.status(404).json({ error: "Row data not found." });
 
     const rowData = Object.fromEntries(rowMap.entries());
-    //console.log("Final data to be injected into doc:", rowData);
 
-    // Load template
+    // ✅ Add signature image path
+    if (rowData.Signature) {
+      const signaturePath = path.join(process.cwd(), rowData.Signature.replace(/\\/g, "/"));
+      if (fs.existsSync(signaturePath)) {
+        rowData.signatureImage = signaturePath;
+      }
+    }
+
     const content = fs.readFileSync(inputPath, "binary");
     const zip = new PizZip(content);
+
+   
+    const imageModule = new ImageModule({
+      centered: false,
+      getImage: (tagValue) => fs.readFileSync(tagValue),
+      getSize: () => [40, 15], // pixels → clean signature size
+    });
+    
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
+      modules: [imageModule],
     });
 
-    // ✅ New docxtemplater API usage
     doc.render(rowData);
 
     const buf = doc.getZip().generate({ type: "nodebuffer" });
@@ -477,7 +566,6 @@ export const PreviewRequest = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
-
 
 export const RejectRequestOfficer = async (req, res) => {
   const userRole = req.session.role;
@@ -586,6 +674,32 @@ export const DelegateRequest = async(req,res)=>{
     });
         return res.status(200).json({ message: "Request delegated successfully." });
         }catch (err) {
+          return res.status(500).json({ error: "Internal Server Error",message:err });
+        }
+  
+}else{
+  return res.status(403).json({ error: "Unauthorized access" });
+}
+}
+export const RejectRequest = async(req,res)=>{
+  const { requestId} = req.body;
+  const userRole = req.session.role;
+  if (userRole === 2) {
+    try {
+
+      const request = await Request.findById(requestId);
+
+      if (!request) return res.status(404).json({ error: "Request not found."});
+         request.status = 'Rejected';
+         request.actions = 'Rejected';
+    
+        await request.save();
+    const readerId = request.createdById
+ io.emit('request-reader', {
+  readerId,
+    });
+        return res.status(200).json({ message: "Request delegated successfully." });
+        }catch (err) {
           console.error("Error in DelegateRequest:", err);
           return res.status(500).json({ error: "Internal Server Error" });
         }
@@ -595,6 +709,107 @@ export const DelegateRequest = async(req,res)=>{
 }
 }
 
-export const SignRequest = async()=>{
-  
-}
+// export const printRequest = async(req,res)=>{
+//   const { requestId } = req.body;
+//   const request = await Request.findById(requestId);
+//   const templatePath = request.tempaltefile;
+//    const bulkId = request.bulkdataId;
+//    const bulkData = await Bulkdata.findById(bulkId);
+//     console.log(bulkData.parsedData);
+//   //  console.log(bulkData);
+//    res.status(200).json({
+//     message: "Print request fetched successfully",
+//     templatePath,
+//     parsedData: bulkData.parsedData.map((map) => Object.fromEntries(map)), // convert Map to plain object
+//   });
+// }
+
+// export const printRequest = async (req, res) => {
+//   const { requestId } = req.body;
+
+//   // Fetch the request and bulk data based on the requestId
+//   const request = await Request.findById(requestId);
+//   const templatePath = request.tempaltefile;
+//   const bulkId = request.bulkdataId;
+//   const bulkData = await Bulkdata.findById(bulkId);
+
+//   // Map over bulkData.parsedData and filter out 'status' and 'deleteFlag'
+//   const filteredParsedData = bulkData.parsedData.map((map) => {
+//     const plainObject = Object.fromEntries(map);
+    
+//     // Remove 'status' and 'deleteFlag' if they exist
+//     delete plainObject.status;
+//     delete plainObject.deleteFlag;
+//     delete plainObject._id;
+
+//     return plainObject;
+//   });
+
+//   console.log(filteredParsedData);
+
+//   res.status(200).json({
+//     message: "Print request fetched successfully",
+//     templatePath,
+//     parsedData: filteredParsedData,
+//   });
+// };
+
+
+export const printRequest = async (req, res) => {
+  try {
+    const { requestId } = req.body;
+    const request = await Request.findById(requestId);
+    const templatePath = request.tempaltefile; // Check for spelling, should be 'templatefile'
+    const bulkData = await Bulkdata.findById(request.bulkdataId);
+
+    const filteredParsedData = bulkData.parsedData.map((map) => {
+      const plainObject = Object.fromEntries(map);
+      delete plainObject.status;
+      delete plainObject.deleteFlag;
+      delete plainObject._id;
+      return plainObject;
+    });
+
+    // Load template
+    const content = fs.readFileSync(path.resolve(templatePath), 'binary');
+
+    // Create ZIP for multiple docs
+    const zipFilename = `documents-${Date.now()}.zip`;
+    const zipPath = path.resolve('temp', zipFilename);
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    archive.pipe(output);
+
+    filteredParsedData.forEach((data, idx) => {
+      const zip = new PizZip(content);
+      
+      const doc = new Docxtemplater(zip, {
+        data,
+        paragraphLoop: true,
+        linebreaks: true,
+      });
+      
+
+      try {
+        doc.render();
+      } catch (err) {
+        return res.status(500).json({ message: 'Template rendering failed', error: err.message });
+      }
+
+      const buf = doc.getZip().generate({ type: 'nodebuffer' });
+      archive.append(buf, { name: `document-${idx + 1}.docx` });
+    });
+
+    archive.finalize();
+
+    output.on('close', () => {
+      res.download(zipPath, zipFilename, (err) => {
+        fs.unlinkSync(zipPath); // Delete zip after sending
+      });
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};

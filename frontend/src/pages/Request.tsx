@@ -129,6 +129,31 @@ export default function RequestPage() {
     }
   };
 
+  // const PreviewReqData = async (rowId: string) => {
+  //   const pathSegments = location.pathname.split("/");
+  //   const requestId = pathSegments[pathSegments.length - 1];
+
+  //   try {
+  //     setLoading(true);
+  //     const response = await mainClient.request("POST", "/api/request/PreviewRequest", {
+  //       responseType: "blob",
+  //       data: { requestId, rowId, bulkdataId },
+  //     });
+
+  //     if (response.status === 200) {
+  //       const blob = new Blob([response.data], { type: "application/pdf" });
+  //       const url = window.URL.createObjectURL(blob);
+  //       window.open(url, "_blank");
+  //     } else {
+  //       message.error("Failed to generate preview.");
+  //     }
+  //   } catch (err) {
+  //     message.error("Something went wrong while generating the template.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
   const PreviewReqData = async (rowId: string) => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
