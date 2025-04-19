@@ -132,27 +132,38 @@ export default function RequestPage() {
   const PreviewReqData = async (rowId: string) => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
-
+  
+    // Open a new blank tab immediately
+    const newWindow = window.open("", "_blank");
+  
+    if (!newWindow) {
+      message.error("Popup blocked! Please allow popups for this site.");
+      return;
+    }
+  
     try {
       setLoading(true);
       const response = await mainClient.request("POST", "/api/request/PreviewRequest", {
         responseType: "blob",
         data: { requestId, rowId, bulkdataId },
       });
-
+  
       if (response.status === 200) {
         const blob = new Blob([response.data], { type: "application/pdf" });
         const url = window.URL.createObjectURL(blob);
-        window.open(url, "_blank");
+        newWindow.location.href = url;
       } else {
+        newWindow.close();
         message.error("Failed to generate preview.");
       }
     } catch (err) {
+      newWindow.close();
       message.error("Something went wrong while generating the template.");
     } finally {
       setLoading(false);
     }
   };
+  
 
   const ReqDelete = async (rowId: string) => {
     const pathSegments = location.pathname.split("/");
