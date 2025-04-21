@@ -3,6 +3,16 @@ import court from '../models/courts.js'
 import Bulkdata from '../models/bulkdata.js';
 import Request from '../models/request.js';
 import { io } from '../config/socket.js';
+import archiver from 'archiver';
+import path from 'path';
+import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
+import fs from 'fs';
+import ImageModule from "docxtemplater-image-module-free";
+import  libre  from 'libreoffice-convert';
+import { PDFDocument } from 'pdf-lib';
+
+
 
 export const uploadSignature = async (req, res) => {
   console.log("fesc");
@@ -45,54 +55,279 @@ export const SignRequestOtpVerify = async (req,res)=>{
   res.status(200).json('OTP Verified');
   }
   
-  export const SignRequest = async (req, res) => {
-    const courtId = req.session.courtId;
-    const { requestId, signtureId } = req.body;
+  // export const SignRequest = async (req, res) => {
+  //   const courtId = req.session.courtId;
+  //   const { requestId, signatureId } = req.body;
   
-    try {
-      // Fetch court data
-      const courtdata = await court.findOne({ id: courtId }); // use findOne instead of find
-      const courtName = courtdata.name;
+  //   try {
+  //     // Fetch court data
+  //     const courtdata = await court.findOne({ id: courtId }); // use findOne instead of find
+  //     const courtName = courtdata.name;
   
-      // Fetch request and related bulk data
-      const request = await Request.findById(requestId);
-      const bulkdataId = request.bulkdataId;
-      const bulkdata = await Bulkdata.findById(bulkdataId);
+  //     // Fetch request and related bulk data
+  //     const request = await Request.findById(requestId);
+  //     const bulkdataId = request.bulkdataId;
+  //     const bulkdata = await Bulkdata.findById(bulkdataId);
   
-      // Fetch signature
-      const sign = await signatures.findById(signtureId);
-      const Signature = sign.url;
+  //     // Fetch signature
+  //     const sign = await signatures.findById(signatureId);
+  //     const signature = sign.url;
   
-      // Modify parsedData
-      const updatedParsedData = bulkdata.parsedData.map((entry) => {
-        // Convert Map to a plain object if needed
-        const obj = Object.fromEntries(entry);
+  //     // Modify parsedData
+  //     const updatedParsedData = bulkdata.parsedData.map((entry) => {
+  //       // Convert Map to a plain object if needed
+  //       const obj = Object.fromEntries(entry);
   
-        // Add signature if not rejected and not deleted
-        if (obj.status !== 'Rejected' && obj.deleteFlag !== 'true') {
-          obj.Signature = Signature;
-          obj.Court= courtName;
-        }
+  //       // Add signature if not rejected and not deleted
+  //       if (obj.status !== 'Rejected' && obj.deleteFlag !== 'true') {
+  //         obj.Signature = signature;
+  //         obj.court= courtName;
+  //       }
         
-        return obj;
-      });
+  //       return obj;
+  //     });
   
-      // Save the updated data back to DB
-      bulkdata.parsedData = updatedParsedData;
-      await bulkdata.save();
-       request.status= 'Ready for Dispatch';
-       request.actions = 'Signed';
-       const readerId = request.createdById
-       await request.save();
+  //     // Save the updated data back to DB
+  //     bulkdata.parsedData = updatedParsedData;
+  //     await bulkdata.save();
+  //      request.status= 'Ready for Dispatch';
+  //      request.actions = 'Signed';
+  //      const readerId = request.createdById
+  //      await request.save();
   
-       io.emit('request-reader', {
-        readerId,
-          });
-      res.status(200).json({ message: "Signature added to eligible entries." });
-    } catch (error) {
-      console.error(error);
-      return res.status(500).json({ error: "Internal Server Error" });
+  //      io.emit('request-reader', {
+  //       readerId,
+  //         });
+  //     res.status(200).json({ message: "Signature added to eligible entries." });
+  //   } catch (error) {
+  //     console.error(error);
+  //     return res.status(500).json({ error: "Internal Server Error" });
+  //   }
+  // };
+  
+  
+const generateDocxFromTemplate = (templatePath, data) => {
+  const content = fs.readFileSync(templatePath, 'binary');
+  const zip = new PizZip(content);
+
+  const imageModule = new ImageModule({
+    centered: false,
+    getImage: (tagValue) => {
+      try {
+        return fs.readFileSync(tagValue); // tagValue is already a file path
+      } catch (err) {
+        console.error(`Error reading image at ${tagValue}:`, err);
+        return fs.readFileSync(path.resolve('placeholder.jpg'));
+      }
+    },
+    getSize: () => [150, 50],
+    fileType: 'docx',
+  });
+
+  const doc = new Docxtemplater(zip, {
+    modules: [imageModule],
+    paragraphLoop: true,
+    linebreaks: true,
+  });
+
+  try {
+    const transformedData = prepareTemplateData(data);
+    doc.render(transformedData);
+  } catch (error) {
+    console.error("Docx templating error:", error);
+    throw error;
+  }
+
+  return doc.getZip().generate({ type: 'nodebuffer' });
+};
+
+const convertToPdfBuffer = (docxBuffer) => {
+  return new Promise((resolve, reject) => {
+    libre.convert(docxBuffer, '.pdf', undefined, (err, done) => {
+      if (err) return reject(err);
+      resolve(done);
+    });
+  });
+};
+
+const prepareTemplateData = (data) => {
+  const transformed = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    let newValue = value ?? '';
+
+    // Detect image tags like Signature
+    if (key.toLowerCase().includes("Signature") && typeof newValue === "string") {
+      const absoluteSigPath = path.resolve(newValue);
+      if (fs.existsSync(absoluteSigPath)) {
+        newValue = absoluteSigPath;
+      } else {
+        console.warn(`Signature image not found at ${absoluteSigPath}`);
+        newValue = path.resolve('placeholder.jpg');
+      }
     }
-  };
+
+    // Transform 'caseid' => 'CaseId', 'signature' => 'Signature'
+    const transformedKey = key
+      .replace(/(^\w)/, (m) => m.toUpperCase()) // Capitalize first letter
+      .replace(/(_\w)/g, (m) => m[1].toUpperCase()); // Remove underscores and capitalize next letter
+
+    transformed[transformedKey] = newValue;
+  }
+
+  return transformed;
+};
+
+// saving merge pdf
+
+  // export const SignRequest = async (req, res) => {
+//     const courtId = req.session.courtId;
+//     const { requestId, signatureId } = req.body;
+    
+//     try {
+//       // Fetch court data
+//       const courtdata = await court.findOne({ id: courtId }); // use findOne instead of find
+//       const courtName = courtdata.name;
   
+//       // Fetch request and related bulk data
+//       const request = await Request.findById(requestId);
+//       const bulkdataId = request.bulkdataId;
+//       const bulkdata = await Bulkdata.findById(bulkdataId);
   
+//       // Fetch signature
+//       const sign = await signatures.findById(signatureId);
+//       const signature = sign.url;
+  
+//       // Modify parsedData
+//       const updatedParsedData = bulkdata.parsedData.map((entry) => {
+//         // Convert Map to a plain object if needed
+//         const obj = Object.fromEntries(entry);
+  
+//         // Add signature if not rejected and not deleted
+//         if (obj.status !== 'Rejected' && obj.deleteFlag !== 'true') {
+//           obj.Signature = signature;
+//           obj.court= courtName;
+//         }
+        
+//         return obj;
+//       });
+  
+//       // Save the updated data back to DB
+//       bulkdata.parsedData = updatedParsedData;
+//       //await bulkdata.save();
+//        request.status= 'Ready for Dispatch';
+//        request.actions = 'Signed';
+//        const readerId = request.createdById
+//       // await request.save();
+  
+//        io.emit('request-reader', {
+//         readerId,
+//           });
+
+//  const folderPath = path.resolve('uploads', 'data', `request-${requestId}`,);
+//     if (!fs.existsSync(folderPath)) {
+//       fs.mkdirSync(folderPath, { recursive: true });
+//     }
+  
+//     const pdfBuffers = [];
+//     for (const data of updatedParsedData) {
+//       const filledDocxBuffer = generateDocxFromTemplate(request.tempaltefile, data);
+//       const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
+//       pdfBuffers.push(pdfBuffer);
+//     }
+
+//     const mergedPdf = await PDFDocument.create();
+//     for (const pdfBuf of pdfBuffers) {
+//       const pdf = await PDFDocument.load(pdfBuf);
+//       const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+//       copiedPages.forEach((page) => mergedPdf.addPage(page));
+//     }
+
+//     const finalPdf = await mergedPdf.save();
+//     const pdfPath = path.join(folderPath, `request-${requestId}-${Date.now()}.pdf`);
+//     fs.writeFileSync(pdfPath, finalPdf);
+
+
+
+//       res.status(200).json({ message: "Signature added to eligible entries." });
+//     } catch (error) {
+//       console.error(error);
+//       return res.status(500).json({ error: "Internal Server Error" });
+//     }
+//   };
+
+export const SignRequest = async (req, res) => {
+  const courtId = req.session.courtId;
+  const userId= req.session.userId;
+  const { requestId, signatureId } = req.body;
+
+  try {
+    // Fetch court data
+    const courtdata = await court.findOne({ id: courtId });
+    const courtName = courtdata.name;
+
+    // Fetch request and related bulk data
+    const request = await Request.findById(requestId);
+    const bulkdataId = request.bulkdataId;
+    const bulkdata = await Bulkdata.findById(bulkdataId);
+
+    // Fetch signature
+    const sign = await signatures.findById(signatureId);
+    const signature = sign.url;
+
+    // Modify parsedData
+    const updatedParsedData = bulkdata.parsedData.map((entry) => {
+      const obj = Object.fromEntries(entry);
+      if (obj.status !== 'Rejected' && obj.deleteFlag !== 'true') {
+        obj.Signature = signature;
+        obj.court = courtName;
+      }
+      return obj;
+    });
+
+    // Save the updated data
+    bulkdata.parsedData = updatedParsedData;
+     await bulkdata.save();
+   
+    request.actions = 'Pending';
+    const readerId = request.createdById;
+     await request.save();
+    io.emit('request-reader', {
+      readerId,
+    });
+
+    // Generate individual PDFs
+    generatePDFsAndSave(updatedParsedData, request,requestId,readerId,userId);
+
+    res.status(200).json({ message: "Signature added to eligible entries and individual PDFs generated." });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ error: "Internal Server Error" });
+  }
+}; 
+
+const generatePDFsAndSave = async (parsedData, request,requestId,readerId,userId) => {
+  // Create folder if it doesn't exist
+  const folderPath = path.resolve('uploads', 'data', `request-${requestId}`);
+  if (!fs.existsSync(folderPath)) {
+    fs.mkdirSync(folderPath, { recursive: true });
+  }
+
+  for (const data of parsedData) {
+    const filledDocxBuffer = generateDocxFromTemplate(request.tempaltefile, data);
+    const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
+
+    const filename = `${data?.Name || 'document'}_${Date.now()}.pdf`;
+    const filePath = path.join(folderPath, filename);
+    fs.writeFileSync(filePath, pdfBuffer);
+  }
+  request.status = 'Ready for Dispatch';
+  request.actions = 'Signed';
+  await request.save();
+  io.emit('request-reader', {
+    readerId,
+  });
+    io.emit('request-officer', {
+        userId,
+      });
+};

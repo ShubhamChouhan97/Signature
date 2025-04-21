@@ -20,6 +20,9 @@ import signatures from '../models/signatures.js'
 import court from  '../models/courts.js'
 const unlinkAsync = promisify(fs.unlink);
 import ImageModule from "docxtemplater-image-module-free";
+import  libre  from 'libreoffice-convert';
+import { PDFDocument } from 'pdf-lib';
+import { date } from "zod";
 import archiver from 'archiver';
 
 const extractTags = (docxBuffer) => {
@@ -33,7 +36,7 @@ const extractTags = (docxBuffer) => {
     return [...new Set(
       tags
         .map(tag => tag.replace(/[{}]/g, '').trim()) // Remove curly braces and trim
-        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage') // Exclude specific tags
+        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage' && tag !== '%signature' && tag !== 'qrCode' && tag !== 'court' ) // Exclude specific tags
     )];
   };
   
@@ -77,11 +80,6 @@ export const allrequest = async (req, res) => {
           deleteFlag: false,
         });
       } else if (userRole === 2) {
-        // Officer role: fetch requests where the officer is involved and not marked as deleted
-        // requests = await Request.find({
-        //   'checkofficer.officerId': userId,
-        //   deleteFlag: false,
-        // });
         requests = await Request.find({
           deleteFlag: false,
           $or: [
@@ -207,62 +205,15 @@ export const templateExcelDownload = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+// const normalizeKey = (key) =>
+//   key.toLowerCase().replace(/[^a-z0-9]/gi, '').trim();
 
-// export const bulkUpload = async (req, res) => {
-//   const requestId = req.body.requestId; 
-
-//   // Check if file is uploaded
-//   if (!req.file) {
-//     return res.status(400).send("No file uploaded.");
-//   }
-
-//   try {
-//     // Read the Excel file
-//     const workbook = XLSX.readFile(req.file.path);
-//     const sheetName = workbook.SheetNames[0]; // Assuming the data is in the first sheet
-//     const sheet = workbook.Sheets[sheetName];
-    
-//     // Convert sheet to JSON (dynamic headers will be detected here)
-//     const data = XLSX.utils.sheet_to_json(sheet);
-
-//     // Example of logging dynamic headers for insight
-//     const headers = Object.keys(data[0] || {});
-//     console.log("Dynamic Headers:", headers);
-
-//     // You can now handle the dynamic data accordingly
-//     // For example, if your database model is flexible, you can map each row to a format dynamically:
-//     const parsedData = data.map((row, index) => {
-//       const dynamicRow = {};
-      
-//       // Dynamically map each field to the parsed data
-//       headers.forEach(header => {
-//         dynamicRow[header] = row[header];
-//       });
-//       dynamicRow['status'] = 'Unsigned';
-//       return dynamicRow;
-//     });
-//      const bulk= new Bulkdata({requestId,parsedData})
-//      await bulk.save()
-//     const BulkDataId = bulk._id;
-     
-//     // Update the request with the parsed data
-//     const request = await Request.findById(requestId);
-//     const path = req.file.path;
-//     request.exceldatafile = path;
-//     request.bulkdataId = BulkDataId;
-//     await request.save();
-
-//     // Send success response
-//     return res.status(200).send({
-//       message: "File uploaded and data processed successfully.",
-//       filename: req.file.filename,
-//       bulkdataId: BulkDataId
-//     });
-//   } catch (err) {
-//     console.error("Error processing file:", err);
-//     return res.status(500).send("Error processing the uploaded file.");
-//   }
-// };
+function normalizeKey(key) {
+  // Convert to lowercase and remove underscores or hyphens
+  return key
+    .replace(/([-_][a-z])/g, (group) => group.toUpperCase().replace('-', '').replace('_', '')) // Handling snake_case or kebab-case
+    .toLowerCase(); // Ensure everything is in lowercase
+}
 
 export const bulkUpload = async (req, res) => {
   const requestId = req.body.requestId;
@@ -286,17 +237,22 @@ export const bulkUpload = async (req, res) => {
     }
     // Example of logging dynamic headers for insight
     const headers = Object.keys(data[0] || {});
-   // console.log("Dynamic Headers:", headers);
-
+  // console.log("Dynamic Headers:", headers);
+  //  console.log('data',data);
     // handle the dynamic data accordingly
     const parsedData = data.map((row) => {
       const dynamicRow = { _id: new mongoose.Types.ObjectId() };
     
-      // Dynamically map each field to the parsed data
+      // // Dynamically map each field to the parsed data
       headers.forEach(header => {
         dynamicRow[header] = row[header];
       });
     
+        // Normalize each key (header) in the row
+        // for (const [key, value] of Object.entries(row)) {
+        //   const normalizedKey = normalizeKey(key);
+        //   dynamicRow[normalizedKey] = value;
+        // }
       dynamicRow['status'] = 'Unsigned';
       dynamicRow['deleteFlag'] = 'false';
       return dynamicRow;
@@ -422,72 +378,6 @@ export const tabledata = async (req, res) => {
     }
   };
   
-
-// export const PreviewRequest = async (req, res) => {
-//   const { requestId, rowId, bulkdataId } = req.body;
-
-//   if (!requestId || !rowId || !bulkdataId) {
-//     return res.status(400).json({ error: "Missing required fields." });
-//   }
-
-//   try {
-//     const request = await Request.findById(requestId);
-//     if (!request) return res.status(404).json({ error: "Request not found." });
-
-//     const fileRelativePath = request.tempaltefile;
-//     if (!fileRelativePath) return res.status(400).json({ error: "No template file associated with this request." });
-
-//     const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
-//     if (!fs.existsSync(inputPath)) return res.status(404).json({ error: "Template file not found." });
-
-//     const bulk = await Bulkdata.findById(bulkdataId);
-//     if (!bulk || !Array.isArray(bulk.parsedData)) {
-//       return res.status(404).json({ error: "Bulk data not found or malformed." });
-//     }
-
-//     const mapArray = bulk.parsedData;
-//     const rowMap = mapArray.find((row) => row.get("_id").toString() === rowId);
-//     if (!rowMap) return res.status(404).json({ error: "Row data not found." });
-
-//     const rowData = Object.fromEntries(rowMap.entries());
-//     //console.log("Final data to be injected into doc:", rowData);
-
-//     // Load template
-//     const content = fs.readFileSync(inputPath, "binary");
-//     const zip = new PizZip(content);
-//     const doc = new Docxtemplater(zip, {
-//       paragraphLoop: true,
-//       linebreaks: true,
-//     });
-
-//     // ✅ New docxtemplater API usage
-//     doc.render(rowData);
-
-//     const buf = doc.getZip().generate({ type: "nodebuffer" });
-//     const tempDocxPath = path.join(process.cwd(), "temp", `filled_${Date.now()}.docx`);
-//     const outputPath = tempDocxPath.replace(".docx", ".pdf");
-
-//     fs.writeFileSync(tempDocxPath, buf);
-
-//     convert(tempDocxPath, outputPath, function (err) {
-//       fs.unlink(tempDocxPath, () => {});
-//       if (err) {
-//         console.error("Conversion error:", err);
-//         return res.status(500).json({ error: "Conversion failed" });
-//       }
-
-//       res.setHeader("Content-Type", "application/pdf");
-//       res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
-//       fs.createReadStream(outputPath)
-//         .on("end", () => fs.unlink(outputPath, () => {}))
-//         .pipe(res);
-//     });
-//   } catch (err) {
-//     console.error("Error in PreviewRequest:", err);
-//     res.status(500).json({ error: "Internal Server Error" });
-//   }
-// };
-
 export const PreviewRequest = async (req, res) => {
   const { requestId, rowId, bulkdataId } = req.body;
 
@@ -500,7 +390,9 @@ export const PreviewRequest = async (req, res) => {
     if (!request) return res.status(404).json({ error: "Request not found." });
 
     const fileRelativePath = request.tempaltefile;
-    if (!fileRelativePath) return res.status(400).json({ error: "No template file associated with this request." });
+    if (!fileRelativePath) {
+      return res.status(400).json({ error: "No template file associated with this request." });
+    }
 
     const inputPath = path.join(process.cwd(), fileRelativePath.replace(/\\/g, "/"));
     if (!fs.existsSync(inputPath)) return res.status(404).json({ error: "Template file not found." });
@@ -514,33 +406,53 @@ export const PreviewRequest = async (req, res) => {
     const rowMap = mapArray.find((row) => row.get("_id").toString() === rowId);
     if (!rowMap) return res.status(404).json({ error: "Row data not found." });
 
-    const rowData = Object.fromEntries(rowMap.entries());
-
-    // ✅ Add signature image path
-    if (rowData.Signature) {
-      const signaturePath = path.join(process.cwd(), rowData.Signature.replace(/\\/g, "/"));
-      if (fs.existsSync(signaturePath)) {
-        rowData.signatureImage = signaturePath;
-      }
+    // Convert rowMap to case-insensitive key-value map
+    const rowDataNormalized = {};
+    for (let [key, value] of rowMap.entries()) {
+      rowDataNormalized[key.toLowerCase()] = value;
     }
 
+    // Read the template
     const content = fs.readFileSync(inputPath, "binary");
     const zip = new PizZip(content);
 
-   
+    // Extract tags from template (like Name, CaseID, etc.)
+    const docForTags = new Docxtemplater(zip);
+    const tags = docForTags.getFullText()
+      .match(/\{(?:%)?([a-zA-Z0-9_]+)(?:%)?\}/g)
+      ?.map(tag => tag.replace(/\{|\}|%/g, '')) || [];
+
+    // Build final data by matching case-insensitively
+    const finalData = {};
+    tags.forEach((tag) => {
+      const lowerTag = tag.toLowerCase();
+      if (rowDataNormalized[lowerTag] !== undefined) {
+        finalData[tag] = rowDataNormalized[lowerTag]; // Use original case of tag for the template
+      }
+    });
+
+    // Handle signature image tag if present
+    if (finalData["signature"]) {
+      const signaturePath = path.join(process.cwd(), finalData["signature"].replace(/\\/g, "/"));
+      if (fs.existsSync(signaturePath)) {
+        finalData["signature"] = signaturePath; // Must match {%signature%} in template
+      }
+    }
+
+    // Prepare for image rendering
     const imageModule = new ImageModule({
       centered: false,
       getImage: (tagValue) => fs.readFileSync(tagValue),
-      getSize: () => [40, 15], // pixels → clean signature size
+      getSize: () => [100, 30],
     });
-    
+
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
       modules: [imageModule],
     });
 
-    doc.render(rowData);
+    doc.render(finalData);
 
     const buf = doc.getZip().generate({ type: "nodebuffer" });
     const tempDocxPath = path.join(process.cwd(), "temp", `filled_${Date.now()}.docx`);
@@ -566,6 +478,7 @@ export const PreviewRequest = async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 
 export const RejectRequestOfficer = async (req, res) => {
   const userRole = req.session.role;
@@ -709,58 +622,97 @@ export const RejectRequest = async(req,res)=>{
 }
 }
 
-// export const printRequest = async(req,res)=>{
-//   const { requestId } = req.body;
-//   const request = await Request.findById(requestId);
-//   const templatePath = request.tempaltefile;
-//    const bulkId = request.bulkdataId;
-//    const bulkData = await Bulkdata.findById(bulkId);
-//     console.log(bulkData.parsedData);
-//   //  console.log(bulkData);
-//    res.status(200).json({
-//     message: "Print request fetched successfully",
-//     templatePath,
-//     parsedData: bulkData.parsedData.map((map) => Object.fromEntries(map)), // convert Map to plain object
-//   });
-// }
+const prepareTemplateData = (data) => {
+  const transformed = {};
 
-// export const printRequest = async (req, res) => {
-//   const { requestId } = req.body;
+  for (const [key, value] of Object.entries(data)) {
+    let newValue = value ?? '';
 
-//   // Fetch the request and bulk data based on the requestId
-//   const request = await Request.findById(requestId);
-//   const templatePath = request.tempaltefile;
-//   const bulkId = request.bulkdataId;
-//   const bulkData = await Bulkdata.findById(bulkId);
+    // Detect image tags like Signature
+    if (key.toLowerCase().includes("Signature") && typeof newValue === "string") {
+      const absoluteSigPath = path.resolve(newValue);
+      if (fs.existsSync(absoluteSigPath)) {
+        newValue = absoluteSigPath;
+      } else {
+        console.warn(`Signature image not found at ${absoluteSigPath}`);
+        newValue = path.resolve('placeholder.jpg');
+      }
+    }
 
-//   // Map over bulkData.parsedData and filter out 'status' and 'deleteFlag'
-//   const filteredParsedData = bulkData.parsedData.map((map) => {
-//     const plainObject = Object.fromEntries(map);
-    
-//     // Remove 'status' and 'deleteFlag' if they exist
-//     delete plainObject.status;
-//     delete plainObject.deleteFlag;
-//     delete plainObject._id;
+    // Transform 'caseid' => 'CaseId', 'signature' => 'Signature'
+    const transformedKey = key
+      .replace(/(^\w)/, (m) => m.toUpperCase()) // Capitalize first letter
+      .replace(/(_\w)/g, (m) => m[1].toUpperCase()); // Remove underscores and capitalize next letter
 
-//     return plainObject;
-//   });
+    transformed[transformedKey] = newValue;
+  }
 
-//   console.log(filteredParsedData);
+  return transformed;
+};
 
-//   res.status(200).json({
-//     message: "Print request fetched successfully",
-//     templatePath,
-//     parsedData: filteredParsedData,
-//   });
-// };
 
+const generateDocxFromTemplate = (templatePath, data) => {
+  const content = fs.readFileSync(templatePath, 'binary');
+  const zip = new PizZip(content);
+
+  const imageModule = new ImageModule({
+    centered: false,
+    getImage: (tagValue) => {
+      try {
+        return fs.readFileSync(tagValue); // tagValue is already a file path
+      } catch (err) {
+        console.error(`Error reading image at ${tagValue}:`, err);
+        return fs.readFileSync(path.resolve('placeholder.jpg'));
+      }
+    },
+    getSize: () => [150, 50],
+    fileType: 'docx',
+  });
+
+  const doc = new Docxtemplater(zip, {
+    modules: [imageModule],
+    paragraphLoop: true,
+    linebreaks: true,
+  });
+
+  try {
+    const transformedData = prepareTemplateData(data);
+    doc.render(transformedData);
+  } catch (error) {
+    console.error("Docx templating error:", error);
+    throw error;
+  }
+
+  return doc.getZip().generate({ type: 'nodebuffer' });
+};
+
+const convertToPdfBuffer = (docxBuffer) => {
+  return new Promise((resolve, reject) => {
+    libre.convert(docxBuffer, '.pdf', undefined, (err, done) => {
+      if (err) return reject(err);
+      resolve(done);
+    });
+  });
+};
 
 export const printRequest = async (req, res) => {
   try {
     const { requestId } = req.body;
+
     const request = await Request.findById(requestId);
-    const templatePath = request.tempaltefile; // Check for spelling, should be 'templatefile'
+    if (!request || !request.tempaltefile) {
+      return res.status(400).json({ message: 'Template file not found for the request.' });
+    }
+
+    const templatePath = path.resolve(request.tempaltefile);
+    if (!fs.existsSync(templatePath)) {
+      return res.status(400).json({ message: 'Template file not found at the specified path.' });
+    }
+
     const bulkData = await Bulkdata.findById(request.bulkdataId);
+    if (!bulkData || !bulkData.parsedData) {
+      return res.status(400).json({ message: 'Bulk data or parsed data not found.' });
+    }
 
     const filteredParsedData = bulkData.parsedData.map((map) => {
       const plainObject = Object.fromEntries(map);
@@ -770,46 +722,76 @@ export const printRequest = async (req, res) => {
       return plainObject;
     });
 
-    // Load template
-    const content = fs.readFileSync(path.resolve(templatePath), 'binary');
+    const pdfBuffers = [];
 
-    // Create ZIP for multiple docs
-    const zipFilename = `documents-${Date.now()}.zip`;
-    const zipPath = path.resolve('temp', zipFilename);
-    const output = fs.createWriteStream(zipPath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
+    for (const data of filteredParsedData) {
+      const filledDocxBuffer = generateDocxFromTemplate(templatePath, data);
+      const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
+      pdfBuffers.push(pdfBuffer);
+    }
 
-    archive.pipe(output);
+    const mergedPdf = await PDFDocument.create();
+    for (const pdfBuf of pdfBuffers) {
+      const pdf = await PDFDocument.load(pdfBuf);
+      const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+      copiedPages.forEach((page) => mergedPdf.addPage(page));
+    }
 
-    filteredParsedData.forEach((data, idx) => {
-      const zip = new PizZip(content);
-      
-      const doc = new Docxtemplater(zip, {
-        data,
-        paragraphLoop: true,
-        linebreaks: true,
-      });
-      
+    const finalPdf = await mergedPdf.save();
 
-      try {
-        doc.render();
-      } catch (err) {
-        return res.status(500).json({ message: 'Template rendering failed', error: err.message });
-      }
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="print-${Date.now()}.pdf"`);
+    res.send(Buffer.from(finalPdf));
+  } catch (err) {
+    console.error("Error while generating print PDF:", err);
+    res.status(500).json({ message: 'Internal Server Error', error: err.message });
+  }
+};
 
-      const buf = doc.getZip().generate({ type: 'nodebuffer' });
-      archive.append(buf, { name: `document-${idx + 1}.docx` });
+export const downloadzip = async (req, res) => {
+  try {
+    const { requestId } = req.body;
+
+    const request = await Request.findById(requestId);
+    if (!request || !request.tempaltefile) {
+      return res.status(400).json({ message: 'Template file not found.' });
+    }
+
+    const templatePath = path.resolve(request.tempaltefile);
+    if (!fs.existsSync(templatePath)) {
+      return res.status(400).json({ message: 'Template not found at path.' });
+    }
+
+    const bulkData = await Bulkdata.findById(request.bulkdataId);
+    if (!bulkData || !bulkData.parsedData) {
+      return res.status(400).json({ message: 'Bulk data not found.' });
+    }
+
+    const filteredParsedData = bulkData.parsedData.map((entry) => {
+      const obj = Object.fromEntries(entry);
+      delete obj.status;
+      delete obj.deleteFlag;
+      delete obj._id;
+      return obj;
     });
+
+    // Setup the zip archive
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="documents-${Date.now()}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    for (let i = 0; i < filteredParsedData.length; i++) {
+      const data = filteredParsedData[i];
+      const filledDocxBuffer = generateDocxFromTemplate(templatePath, data);
+      const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
+      archive.append(pdfBuffer, { name: `document-${i + 1}.pdf` });
+    }
 
     archive.finalize();
-
-    output.on('close', () => {
-      res.download(zipPath, zipFilename, (err) => {
-        fs.unlinkSync(zipPath); // Delete zip after sending
-      });
-    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Internal Server Error' });
+    console.error("Download ZIP error:", err);
+    res.status(500).json({ message: 'Internal Server Error', error: err.message });
   }
 };
