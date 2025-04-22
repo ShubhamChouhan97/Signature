@@ -7,3 +7,5 @@ data/document_tar/*
 data/request_document/*
 data/merged_document/*
 uploads/
+SignedData/
+temp/

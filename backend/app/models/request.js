@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { string } from "zod";
 
 function getCurrent12HourTime() {
   return new Date().toLocaleString('en-US', {
@@ -72,6 +73,10 @@ const RequestSchema = new mongoose.Schema({
   createdAt: {
     type: String,
     default: getCurrent12HourTime,
+  },
+  datafolderPath:{
+type:String,
+default:null,
   },
   status: {
     type: String,

@@ -10,13 +10,15 @@ export default function RequestPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [bulkdataId, setBulkdataId] = useState(null);
+  const normalizedDoc: Record<string, any> = {};
 
   interface Request {
     [key: string]: any;
     signDate?: string;
   }
 
-  const session = useAppStore().session;
+  const session = useAppStore().session
+        const myId=useAppStore().session?.userId;
   const userRole = session?.role === 2 ? rolesMap[2] : session?.role === 3 ? rolesMap[3] : null;
 
   const [tablehead, settablehead] = useState<Request[]>([]);
@@ -128,68 +130,29 @@ export default function RequestPage() {
       message.error("Failed to upload file.");
     }
   };
-
-  // const PreviewReqData = async (rowId: string) => {
-  //   const pathSegments = location.pathname.split("/");
-  //   const requestId = pathSegments[pathSegments.length - 1];
-
-  //   try {
-  //     setLoading(true);
-  //     const response = await mainClient.request("POST", "/api/request/PreviewRequest", {
-  //       responseType: "blob",
-  //       data: { requestId, rowId, bulkdataId },
-  //     });
-
-  //     if (response.status === 200) {
-  //       const blob = new Blob([response.data], { type: "application/pdf" });
-  //       const url = window.URL.createObjectURL(blob);
-  //       window.open(url, "_blank");
-  //     } else {
-  //       message.error("Failed to generate preview.");
-  //     }
-  //   } catch (err) {
-  //     message.error("Something went wrong while generating the template.");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
   const PreviewReqData = async (rowId: string) => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
   
-    // Open a new blank tab immediately
-    const newWindow = window.open("", "_blank");
-  
-    if (!newWindow) {
-      message.error("Popup blocked! Please allow popups for this site.");
-      return;
-    }
-  
     try {
       setLoading(true);
+  
       const response = await mainClient.request("POST", "/api/request/PreviewRequest", {
-        responseType: "blob",
-        data: { requestId, rowId, bulkdataId },
+        responseType: "blob", // Important: tell axios to treat it as binary data
+        data: { requestId, rowId, bulkdataId, myId},
       });
   
-      if (response.status === 200) {
-        const blob = new Blob([response.data], { type: "application/pdf" });
-        const url = window.URL.createObjectURL(blob);
-        newWindow.location.href = url;
-      } else {
-        newWindow.close();
-        message.error("Failed to generate preview.");
-      }
+      const blob = new Blob([response.data], { type: "application/pdf" });
+      const fileURL = window.URL.createObjectURL(blob);
+      window.open(fileURL, "_blank");
     } catch (err) {
-      newWindow.close();
-      message.error("Something went wrong while generating the template.");
+      console.error("Preview error:", err);
+      message.error("Failed to preview document.");
     } finally {
       setLoading(false);
     }
   };
   
-
   const ReqDelete = async (rowId: string) => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
@@ -255,62 +218,119 @@ export default function RequestPage() {
         </div>
 
         <Spin spinning={loading} tip="Processing...">
-          <table className="table-auto w-full">
-            <thead>
-              <tr className="bg-gray-100 text-left">
-                {tablehead.map((header, index) => (
-                  <th key={index} className="p-3">{String(header)}</th>
-                ))}
-                <th className="p-3">Sign Date</th>
-                <th className="p-3">Request Status</th>
-                <th className="p-3">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {tabledata.map((doc, index) => (
-                <tr key={index} className="border-t">
-                  {tablehead.map((header, headerIndex) => (
-                    <td key={headerIndex} className="p-3">{doc[header] || '—'}</td>
-                  ))}
-                  <td className="p-3">{doc.signDate || '—'}</td>
-                  <td className="p-3">{doc.status || '—'}</td>
-                  <td className="p-3">
-                    {doc.status === "Signed" && (
-                      <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
-                        Download
-                      </button>
-                    )}
-                    {doc.status === "Delegated" && (
-                      <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
-                        Preview
-                      </button>
-                    )}
-                    {doc.status === "Rejected" && (
-                      <button className="bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600" onClick={() => alert("No action allowed. Request already rejected.")}>
-                        No Action Allowed
-                      </button>
-                    )}
-                    {["Unsigned"].includes(doc.status) && (
-                      <>
-                        <button className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600" onClick={() => PreviewReqData(doc._id)}>
-                          Preview
-                        </button>
-                        {userRole === 'Reader' ? (
-                          <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600" onClick={() => ReqDelete(doc._id)}>
-                            Delete
-                          </button>
-                        ) : (
-                          <button className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600" onClick={() => ReqReject(doc._id)}>
-                            Reject
-                          </button>
-                        )}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="overflow-x-auto w-full">
+  <table className="min-w-full table-auto border-collapse">
+    <thead>
+      <tr className="bg-gray-100 text-left">
+        {tablehead.map((header, index) => (
+          <th
+            key={index}
+            className="p-3 whitespace-nowrap border-b border-gray-300"
+          >
+            {String(header)}
+          </th>
+        ))}
+        {/* Sticky Headers */}
+        <th className="p-3 sticky right-[240px] bg-gray-100 border-b border-gray-300 whitespace-nowrap">
+          Sign Date
+        </th>
+        <th className="p-3 sticky right-[120px] bg-gray-100 border-b border-gray-300 whitespace-nowrap">
+          Request Status
+        </th>
+        <th className="p-3 sticky right-0 bg-gray-100 border-b border-gray-300 whitespace-nowrap">
+          Action
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {tabledata.map((doc, index) => {
+        const normalizedDoc: Record<string, any> = {};
+        Object.entries(doc).forEach(([key, value]) => {
+          normalizedDoc[key.toLowerCase()] = value;
+        });
+
+        return (
+          <tr key={index} className="border-t border-gray-200 hover:bg-gray-50">
+            {tablehead.map((header, hIndex) => {
+              const key = header.toLowerCase();
+              return (
+                <td
+                  key={hIndex}
+                  className="p-3 whitespace-nowrap border-b border-gray-100"
+                >
+                  {normalizedDoc[key] || "—"}
+                </td>
+              );
+            })}
+
+            {/* Sticky Right Columns */}
+            <td className="p-3 whitespace-nowrap sticky right-[240px] bg-white border-b border-gray-100">
+              {doc.signDate || "—"}
+            </td>
+            <td className="p-3 whitespace-nowrap sticky right-[120px] bg-white border-b border-gray-100">
+              {doc.status || "—"}
+            </td>
+            <td className="p-3 whitespace-nowrap sticky right-0 bg-white border-b border-gray-100">
+              {/* Actions */}
+              {doc.status === "Signed" && (
+                <button
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                  onClick={() => PreviewReqData(doc._id)}
+                >
+                  Download
+                </button>
+              )}
+              {doc.status === "Delegated" && (
+                <button
+                  className="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+                  onClick={() => PreviewReqData(doc._id)}
+                >
+                  Preview
+                </button>
+              )}
+              {doc.status === "Rejected" && (
+                <button
+                  className="bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600"
+                  onClick={() =>
+                    alert("No action allowed. Request already rejected.")
+                  }
+                >
+                  No Action
+                </button>
+              )}
+              {doc.status === "Unsigned" && (
+                <>
+                  <button
+                    className="bg-blue-500 text-white px-3 py-1 rounded mr-2 hover:bg-blue-600"
+                    onClick={() => PreviewReqData(doc._id)}
+                  >
+                    Preview
+                  </button>
+                  {userRole === "Reader" ? (
+                    <button
+                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                      onClick={() => ReqDelete(doc._id)}
+                    >
+                      Delete
+                    </button>
+                  ) : (
+                    <button
+                      className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
+                      onClick={() => ReqReject(doc._id)}
+                    >
+                      Reject
+                    </button>
+                  )}
+                </>
+              )}
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
+
         </Spin>
       </div>
     </div>

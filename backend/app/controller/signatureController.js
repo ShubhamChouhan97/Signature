@@ -297,7 +297,7 @@ export const SignRequest = async (req, res) => {
     });
 
     // Generate individual PDFs
-    generatePDFsAndSave(updatedParsedData, request,requestId,readerId,userId);
+    generatePDFsAndSave(updatedParsedData, request,bulkdata,requestId,readerId,userId);
 
     res.status(200).json({ message: "Signature added to eligible entries and individual PDFs generated." });
   } catch (error) {
@@ -306,28 +306,43 @@ export const SignRequest = async (req, res) => {
   }
 }; 
 
-const generatePDFsAndSave = async (parsedData, request,requestId,readerId,userId) => {
-  // Create folder if it doesn't exist
-  const folderPath = path.resolve('uploads', 'data', `request-${requestId}`);
+
+const generatePDFsAndSave = async (parsedData, request, bulkdata, requestId, readerId, userId) => {
+  const folderName = path.join('../','SignedData', `request-${requestId}`); // relative to 'uploads'
+  const folderPath = path.resolve('uploads', folderName);
+
   if (!fs.existsSync(folderPath)) {
     fs.mkdirSync(folderPath, { recursive: true });
   }
 
-  for (const data of parsedData) {
-    const filledDocxBuffer = generateDocxFromTemplate(request.tempaltefile, data);
-    const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
+  request.datafolderPath = path.join('uploads', folderName); // Store path from 'uploads'
 
-    const filename = `${data?.Name || 'document'}_${Date.now()}.pdf`;
-    const filePath = path.join(folderPath, filename);
-    fs.writeFileSync(filePath, pdfBuffer);
+  const updatedParsedData = [];
+
+  for (const entry of parsedData) {
+    const obj = { ...entry };
+    if (obj.status !== 'Rejected' && obj.deleteFlag !== 'true') {
+      const filledDocxBuffer = generateDocxFromTemplate(request.tempaltefile, obj);
+      const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
+
+      const filename = `${obj?.Name || 'document'}_${Date.now()}.pdf`;
+      const relativeFilePath = path.join('uploads', folderName, filename); // uploads/data/request-xxx/filename.pdf
+      const fullFilePath = path.resolve(relativeFilePath);
+      fs.writeFileSync(fullFilePath, pdfBuffer);
+       obj.status = 'Signed';
+      obj.filepath = relativeFilePath; // Store only path from 'uploads'
+    }
+
+    updatedParsedData.push(Object.entries(obj));
   }
+
+  bulkdata.parsedData = updatedParsedData;
+  await bulkdata.save();
+
   request.status = 'Ready for Dispatch';
   request.actions = 'Signed';
   await request.save();
-  io.emit('request-reader', {
-    readerId,
-  });
-    io.emit('request-officer', {
-        userId,
-      });
+  console.log("")
+  io.emit('request-reader', { readerId });
+  io.emit('request-officer', { userId });
 };

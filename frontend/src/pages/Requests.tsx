@@ -37,7 +37,7 @@ const actionButtonColors: Record<string, string> = {
   'Send for Signature': 'bg-blue-600 hover:bg-blue-700 text-white',
   Delete: 'bg-red-600 hover:bg-red-700 text-white',
   Sign: 'bg-indigo-600 hover:bg-indigo-700 text-white',
-  Print: 'bg-yellow-500 hover:bg-yellow-600 text-black',
+  'Print ALL': 'bg-yellow-500 hover:bg-yellow-600 text-black',
   'Download All (ZIP)': 'bg-purple-600 hover:bg-purple-700 text-white',
   Dispatch: 'bg-green-400 hover:bg-green-700 text-white',
   Delegate: 'bg-cyan-600 hover:bg-cyan-700 text-white',
@@ -192,7 +192,7 @@ const getActions = (req: Request) => {
       case 'Delegated':
         return ['Clone', 'Sign'];
       case 'Ready for Dispatch':
-        return ['Clone', 'Print', 'Download All (ZIP)', 'Dispatch'];
+        return ['Clone', 'Print ALL', 'Download All (ZIP)', 'Dispatch'];
       case 'Waited for Signature':
         return ['Clone'];
         case 'Rejected':
@@ -208,9 +208,9 @@ const getActions = (req: Request) => {
       case 'Submited':
         return['Clone','Print']
       case 'Pending':
-        return ['Clone','Submit','Print All'];
+        return ['Clone','Submit'];
       case 'Signed':
-        return ['Clone','Print', 'Dispatch'];
+        return ['Clone','Print ALL', 'Dispatch'];
         case 'Delegated':
         return ['No Action Allow'];
         case 'Rejected':
@@ -307,7 +307,7 @@ const signatureRequestSubmit = async () =>{
     const response = await mainClient.request("POST", "/api/signatures/SignRequest", {
       data: {
         requestId: signRequest._id, 
-        signtureId:selectedSignature._id,
+        signatureId:selectedSignature._id,
       },
     });
     if (response.status === 200) {
@@ -362,196 +362,84 @@ setIsOtpModalVisible(true);
  }
 
 
-// const openPrintPreview = (parsedData: Record<string, any>[]) => {
-//   const printWindow = window.open('', '_blank');
-
-//   const content = parsedData.map((item: Record<string, any>, index: number) => {
-//     const entries = Object.entries(item);
-
-//     const entryHtml = entries.map(([key, value]) => {
-//       if (
-//         key.toLowerCase() === "signature" &&
-//         typeof value === "string" &&
-//         value.endsWith(".jpg")
-//       ) {
-//         return `<p><strong>${key}:</strong><br><img src="${window.location.origin}/${value}" height="50"/></p>`;
-//       }
-//       return `<p><strong>${key}:</strong> ${value}</p>`;
-//     }).join("");
-
-//     return `
-//       <div class="print-page">
-//         <h3>Record ${index + 1}</h3>
-//         ${entryHtml}
-//       </div>
-//     `;
-//   }).join("");
-
-//   printWindow?.document.write(`
-//     <html>
-//       <head>
-//         <title>Print Preview</title>
-//         <style>
-//           body {
-//             font-family: Arial, sans-serif;
-//             padding: 20px;
-//           }
-//           h3 {
-//             margin-top: 0;
-//           }
-//           .print-page {
-//             page-break-after: always;
-//             margin-bottom: 50px;
-//           }
-//           .print-page:last-child {
-//             page-break-after: auto;
-//           }
-//         </style>
-//       </head>
-//       <body>
-//         <h1>Bulk Print Data</h1>
-//         ${content}
-//         <script>
-//           window.onload = function() {
-//             window.print();
-//           };
-//         </script>
-//       </body>
-//     </html>
-//   `);
-
-//   printWindow?.document.close();
-// };
-
-const openPrintPreview = (parsedData: Record<string, any>[]) => {
-  const printWindow = window.open('', '_blank');
-
-  const SERVER_URL = "http://localhost:3000"; // your backend server's URL
-
-  const content = parsedData.map((item: Record<string, any>, index: number) => {
-    const entries = Object.entries(item);
-
-    const entryHtml = entries.map(([key, value]) => {
-      if (
-        key.toLowerCase() === "signature" &&
-        typeof value === "string" &&
-        (value.endsWith(".jpg") || value.endsWith(".jpeg") || value.endsWith(".png"))
-      ) {
-        // Normalize backslashes and construct full image URL
-        const normalizedPath = value.replace(/\\/g, "/");
-        const imageUrl = `${SERVER_URL}/${normalizedPath}`;
-
-        return `<p><strong>${key}:</strong><br><img src="${imageUrl}" height="50" alt="Signature Image"/></p>`;
-      }
-
-      return `<p><strong>${key}:</strong> ${value}</p>`;
-    }).join("");
-
-    return `
-      <div class="print-page">
-        <h3>Record ${index + 1}</h3>
-        ${entryHtml}
-      </div>
-    `;
-  }).join("");
-
-  printWindow?.document.write(`
-    <html>
-      <head>
-        <title>Print Preview</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-          }
-          h3 {
-            margin-top: 0;
-          }
-          .print-page {
-            page-break-after: always;
-            margin-bottom: 50px;
-          }
-          .print-page:last-child {
-            page-break-after: auto;
-          }
-          img {
-            max-width: 100%;
-            max-height: 100px;
-          }
-        </style>
-      </head>
-      <body>
-        <h1>Bulk Print Data</h1>
-        ${content}
-        <script>
-          window.onload = function() {
-            window.print();
-          };
-        </script>
-      </body>
-    </html>
-  `);
-
-  printWindow?.document.close();
-};
-
-
-//  const handlePrint = async (request: Request) => {
-//   try {
-//     message.loading({ content: `Printing "${request.title}"...`, key: 'print' });
-
-//     const response = await mainClient.request("POST", "/api/request/printRequest", {
-//       data: {
-//         requestId: request._id,
-//       },
-//     });
-
-//     if (response.status === 200) {
-//       message.success({ content: 'Print started successfully.', key: 'print' });
-//       const { parsedData } = response.data;
-//       openPrintPreview(parsedData); // just send it to preview
-//       message.success({ content: 'Print data loaded.', key: 'print' });
-//     } else {
-//       message.error({ content: 'Failed to initiate print.', key: 'print' });
-//     }
-//   } catch (error) {
-//     console.error("Print error:", error);
-//     message.error({ content: 'Server error while trying to print.', key: 'print' });
-//   }
-// };
-
 const handlePrint = async (request: Request) => {
-  try {
-    message.loading({ content: `Printing "${request.title}"...`, key: 'print' });
-    const response = await mainClient.request("POST", "/api/request/printRequest", {
-            data: {
-              requestId: request._id,
-            },
-      responseType: "blob",
-          });
-    if (response.status === 200) {
-      const blob = new Blob([response.data]); // 👈 Access response.data, not .blob()
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `print-${request.title}.zip`;
-      a.click();
-      window.URL.revokeObjectURL(url);
+  const key = 'print';
 
-      message.success({ content: 'Download started.', key: 'print' });
+  // Show persistent loading message
+  message.loading({ content: `Printing "${request.title}"...`, key });
+
+  try {
+    // Open the new window early
+    const newWindow = window.open("", "_blank");
+
+    if (!newWindow) {
+      message.error({ content: "Popup blocked. Please allow popups for this site.", key });
+      return;
+    }
+
+    // Send the request to get the PDF
+    const response = await mainClient.request("POST", "/api/request/printRequest", {
+      data: { requestId: request._id },
+      responseType: "blob",
+    });
+
+    if (response.status === 200) {
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      newWindow.location.href = url;
+
+      // Wait a little for the URL to load before printing
+      newWindow.onload = () => {
+        newWindow.focus();
+        newWindow.print();
+      };
+
+      message.success({ content: 'Printing started.', key });
     } else {
-      message.error({ content: 'Failed to download.', key: 'print' });
+      message.error({ content: 'Failed to print.', key });
     }
   } catch (error) {
     console.error("Print error:", error);
-    message.error({ content: 'Server error while trying to print.', key: 'print' });
+    message.error({ content: 'Server error while trying to print.', key });
   }
 };
 
-  const handleDownloadZip = (request: Request) => {
-    alert(`Download All (ZIP) clicked for "${request.title}"`);
+  const handleDownloadZip = async (request: Request) => {
+    try {
+      message.loading({ content: `Preparing ZIP for "${request.title}"...`, key: 'zip' });
+  
+      // Send the request ID to the backend to get the ZIP file
+      const response = await mainClient.request("POST", "/api/request/downloadzip", {
+        data: { requestId: request._id },
+        responseType: "blob", // Ensure we're receiving a Blob
+      });
+  
+      if (response.status === 200) {
+        const blob = new Blob([response.data], { type: 'application/zip' });
+  
+        // Create an object URL for the ZIP blob
+        const url = window.URL.createObjectURL(blob);
+  
+        // Create a temporary anchor element to trigger the download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `documents-${Date.now()}.zip`; // Set the file name
+        document.body.appendChild(a);
+        a.click();
+        a.remove(); // Clean up the anchor element
+  
+        message.success({ content: 'ZIP download started.', key: 'zip' });
+      } else {
+        message.error({ content: 'Failed to generate ZIP.', key: 'zip' });
+      }
+    } catch (error) {
+      console.error("Download ZIP error:", error);
+      message.error({ content: 'Server error while generating ZIP.', key: 'zip' });
+    }
   };
 
+  
   const handleDispatch = (request: Request) => {
     alert(`Dispatch clicked for "${request.title}"`);
   };
@@ -601,7 +489,7 @@ const handlePrint = async (request: Request) => {
         return handleDelete(request);
       case 'Sign':
         return handleSign(request);
-      case 'Print':
+      case 'Print ALL':
         return handlePrint(request);
       case 'Download All (ZIP)':
         return handleDownloadZip(request);
@@ -689,7 +577,22 @@ const handlePrint = async (request: Request) => {
     }
   };
   
-  
+  const downloadsample = async( )=>{
+    try {
+    const response = await mainClient.request("GET", "/api/templates/sampleTemplate",{
+      responseType: "blob",
+    });
+    const blob = new Blob([response.data]);
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "SampleTemplate.docx";
+    a.click();
+    window.URL.revokeObjectURL(url);
+    } catch (error) {
+      message.error("Failed to Download request.");
+    }
+  }
   
   return (
     <div className="p-4">
@@ -762,7 +665,15 @@ const handlePrint = async (request: Request) => {
           >
             <Input placeholder="Enter the request title" />
           </Form.Item>
-
+            <Form.Item label="Note:">
+            <div>
+                <p>1. Only Word files are allowed for upload.</p>
+                <p>2. The file must have field names enclosed in curly brackets <code>{'{ }'}</code>.</p>
+                <p>3. The file must include the fields <code>{'{court}'}</code>, <code>{'{qrCode}'}</code>, and <code>{'{%signature}'}</code>.</p>
+                <p>4. The signature field must be written as <code>{'{%signature}'}</code>.</p>
+                <p>5. Download Sample file a <button style={{ color: 'blue' }} onClick={downloadsample}>Click hear </button></p>
+            </div>
+            </Form.Item>
           <Form.Item
             label="Upload Template"
             name="upload"
@@ -785,7 +696,7 @@ const handlePrint = async (request: Request) => {
               <Button icon={<UploadOutlined />}>Click to Upload</Button>
             </Upload>
           </Form.Item>
-
+           
           <Form.Item
             label="Request Description"
             name="description"
