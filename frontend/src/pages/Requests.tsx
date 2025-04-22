@@ -19,12 +19,13 @@ const socket = io("http://localhost:3000", {
 });
 
 interface Request {
+  rejectReason: string;
   _id: string;
   title: string;
   numberOfDocuments: number;
   rejectedDocuments: number;
   createdAt: string;
-  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature'|'Rejected';
+  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature'|'Rejected'|'Pending';
   actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' | 'Rejected' ;
 }
 
@@ -56,6 +57,11 @@ const Requests: React.FC = () => {
   // officer data 
   const [officerData, setOfficerData] = useState<{ label: string, value: string }[]>([]); // Officer data state
   
+  // rejected modal
+  const [isRejectModalVisible, setIsRejectModalVisible] = useState(false);
+const [rejectReason, setRejectReason] = useState("");
+const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+
 
 // send for signature 
   const [isSignatureModalVisible, setIsSignatureModalVisible] = useState(false);
@@ -197,6 +203,8 @@ const getActions = (req: Request) => {
         return ['Clone'];
         case 'Rejected':
         return ['Clone'];
+        case 'Pending':
+        return ['Clone'];
       default:
         return [];
     }
@@ -208,7 +216,7 @@ const getActions = (req: Request) => {
       case 'Submited':
         return['Clone','Print']
       case 'Pending':
-        return ['Clone','Submit'];
+        return ['Clone'];
       case 'Signed':
         return ['Clone','Print ALL', 'Dispatch'];
         case 'Delegated':
@@ -445,22 +453,51 @@ const handlePrint = async (request: Request) => {
   };
 
   const handleRejected = async (request :Request)=>{
+    setSelectedRowId(request._id);
+    setIsRejectModalVisible(true);
+    // try {
+    //   const response = await mainClient.request("POST", "/api/request/RejectRequest", {
+    //     data: {
+    //       requestId: request._id, // Use request._id directly instead of selectedRequest
+    //     },
+    //   });
+    //   if (response.status === 200) {
+    //     setLoadvar((prev)=>prev+1);
+    //     message.success('Request Rejected Successfully')
+    //   } else {
+    //     message.error("Failed to Reject request.");
+    //   }
+    // } catch (error) {
+    //   message.error("Failed to Reject request.");
+    // }
+  }
+  const handleRejectConfirm = async () => {
+    if (!rejectReason.trim()) {
+      message.warning("Please enter a rejection reason.");
+      return;
+    }
+  
     try {
       const response = await mainClient.request("POST", "/api/request/RejectRequest", {
-        data: {
-          requestId: request._id, // Use request._id directly instead of selectedRequest
-        },
-      });
+             data: {
+              requestId: selectedRowId, // Use request._id directly instead of selectedRequest
+              reason :rejectReason,
+            },
+          });
+  
       if (response.status === 200) {
         setLoadvar((prev)=>prev+1);
-        message.success('Request Rejected Successfully')
-      } else {
-        message.error("Failed to Reject request.");
+        message.success("Request Rejected Successfully");
+        setLoading(true);
+        setIsRejectModalVisible(false);
+        setRejectReason("");
+        setSelectedRowId(null);
       }
     } catch (error) {
-      message.error("Failed to Reject request.");
+      message.error("Error rejecting request.");
     }
-  }
+  };
+  
   const handleDelegate =  async(request : Request)=>{
     try {
       const response = await mainClient.request("POST", "/api/request/DelegateRequest", {
@@ -631,9 +668,55 @@ const handlePrint = async (request: Request) => {
               <td className="p-2 cursor-pointer" onClick={() => openrequest(req._id)}>{req.numberOfDocuments}</td>
               <td className="p-2 cursor-pointer text-red-500" onClick={() => alert(`Rejected Docs: ${req.rejectedDocuments}`)}>{req.rejectedDocuments}</td>
               <td className="p-2">{req.createdAt}</td>
-              <td className={"p-2" }>
-               {userRole === 'Reader' ? req.status : req.actions}
-              </td>
+              {/* <td className="p-2">
+                {userRole === 'Reader' ? (
+                 req.status === 'Pending' ? (
+                 <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+                   Processing...
+                </div>
+               ) : (req.status )) : req.actions === 'Pending' ? (
+             <div className="flex items-center gap-2">
+             <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+              Processing...
+             </div>) : ( req.actions)}
+             </td> */}
+             <td className="p-2">
+  {userRole === "Reader" ? (
+    req.status === "Pending" ? (
+      <div className="flex items-center gap-2">
+        <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+        Processing...
+      </div>
+    ) : req.status === "Rejected" ? (
+      <div className="flex items-center gap-2 group relative">
+        <span className="text-red-600">Rejected</span>
+        <span className="text-blue-500">ℹ️</span>
+        <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
+          {req.rejectReason || "No reason provided"}
+        </div>
+      </div>
+    ) : (
+      req.status
+    )
+  ) : req.actions === "Pending" ? (
+    <div className="flex items-center gap-2">
+      <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+      Processing...
+    </div>
+  ) : req.actions === "Rejected" ? (
+    <div className="flex items-center gap-2 group relative">
+      <span className="text-red-600">Rejected</span>
+      <span className="text-blue-500">ℹ️</span>
+      <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
+        {req.rejectReason || "No reason provided"}
+      </div>
+    </div>
+  ) : (
+    req.actions
+  )}
+</td>
+
               <td className="p-2 flex flex-wrap gap-2">
                 {getActions(req).map((action) => (
                  <button
@@ -706,7 +789,7 @@ const handlePrint = async (request: Request) => {
           </Form.Item>
 
           <Button type="primary" htmlType="submit" loading={loading} block>
-            Create Request & Send for Signature
+            Create Request
           </Button>
         </Form>
       </Drawer>
@@ -801,36 +884,6 @@ const handlePrint = async (request: Request) => {
     />
   </div>
 </Modal>
-{/* <Modal
-  open={issSignModalVisible}
-  onCancel={() => setIsSignModalVisible(false)}
-  onOk={async () => { await handleSubmitSignForOtp() }}
-  okText="Submit"
-  cancelText="Cancel"
->
-  {signatures.length > 0 ? (
-    <div className="flex flex-wrap gap-4 justify-center">
-      {signatures.map((url, index) => (
-        <div
-          key={index}
-          onClick={() => setSelectedSignature(url)}
-          className={`border rounded p-1 flex items-center justify-center w-40 h-40 cursor-pointer ${
-            selectedSignature === url ? "ring-4 ring-blue-400 border-blue-500" : ""
-          }`}
-        >
-          <img
-            src={url}
-            alt={`Signature ${index + 1}`}
-            className="max-h-full max-w-full object-contain"
-          />
-        </div>
-      ))}
-    </div>
-  ) : (
-    <div className="text-center text-gray-500">No signatures available</div>
-  )}
-</Modal> */}
-
 <Modal
   open={issSignModalVisible}
   onCancel={() => setIsSignModalVisible(false)}
@@ -859,6 +912,26 @@ const handlePrint = async (request: Request) => {
   ) : (
     <div className="text-center text-gray-500">No signatures available</div>
   )}
+</Modal>
+<Modal
+  title="Reject Request"
+  open={isRejectModalVisible}
+  onCancel={() => {
+    setIsRejectModalVisible(false);
+    setRejectReason("");
+    setSelectedRowId(null);
+  }}
+  onOk={handleRejectConfirm}
+  okText="Reject"
+  okButtonProps={{ danger: true }}
+>
+  <p>Please enter the reason for rejecting this request:</p>
+  <Input.TextArea
+    rows={4}
+    value={rejectReason}
+    onChange={(e) => setRejectReason(e.target.value)}
+    placeholder="Enter rejection reason..."
+  />
 </Modal>
 
 

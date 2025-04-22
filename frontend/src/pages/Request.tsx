@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from "react";
 import { useLocation } from "react-router";
 import { mainClient, useAppStore } from "../store";
 import { rolesMap } from '../libs/statusMap';
-import { message, Spin } from "antd";
+import { Modal, Input,message, Spin } from "antd";
 
 
 export default function RequestPage() {
@@ -11,7 +11,10 @@ export default function RequestPage() {
   const [loading, setLoading] = useState(false);
   const [bulkdataId, setBulkdataId] = useState(null);
   const normalizedDoc: Record<string, any> = {};
-
+  const [isRejectModalVisible, setIsRejectModalVisible] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  
   interface Request {
     [key: string]: any;
     signDate?: string;
@@ -23,20 +26,27 @@ export default function RequestPage() {
 
   const [tablehead, settablehead] = useState<Request[]>([]);
   const [tabledata, settabledata] = useState<Request[]>([]);
-
+  const [requestStatus,setrequestStatus] = useState<string | null>(null);
   const fetchData = async () => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
+  
     try {
       const response = await mainClient.request("POST", "/api/request/tablehead", {
         data: { requestId },
       });
-      const data = Array.isArray(response.data) ? response.data : [];
-      settablehead(data);
+  
+      const responseData = response.data;
+      const header = Array.isArray(responseData) && Array.isArray(responseData[0]) ? responseData[0] : [];
+  
+      settablehead(header);
+      setrequestStatus(responseData[1]);
+     
     } catch (error) {
       console.error("Error fetching requests:", error);
     }
   };
+  
 
   useEffect(() => {
     fetchData();
@@ -168,23 +178,37 @@ export default function RequestPage() {
       message.error("Error In Deleting request");
     }
   };
-
-  const ReqReject = async (rowId: string) => {
+  const handleRejectConfirm = async () => {
+    if (!rejectReason.trim()) {
+      message.warning("Please enter a rejection reason.");
+      return;
+    }
+  
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
+  
     try {
-      const response = await mainClient.request("POST", "/api/request/RejectRequestOfficer", {
-        data: { requestId, rowId, bulkdataId },
+      const response = await mainClient.request("POST", "/api/request/RejectRequestByOfficer", {
+        data: {
+          requestId,
+          rowId: selectedRowId,
+          bulkdataId,
+          reason: rejectReason,
+        },
       });
+  
       if (response.status === 200) {
-        setLoading(true);
         message.success("Request Rejected Successfully");
+        setLoading(true);
+        setIsRejectModalVisible(false);
+        setRejectReason("");
+        setSelectedRowId(null);
       }
-    } catch {
-      message.error("Error rejecting request");
+    } catch (error) {
+      message.error("Error rejecting request.");
     }
   };
-
+  
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-5xl mx-auto bg-white shadow-md rounded-xl p-6">
@@ -198,7 +222,7 @@ export default function RequestPage() {
               ref={fileInputRef}
               onChange={handleFileChange}
             />
-            {userRole === 'Reader' && (
+            {/* {userRole === 'Reader' && (
               <>
                 <button
                   className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
@@ -213,15 +237,31 @@ export default function RequestPage() {
                   Download Template
                 </button>
               </>
-            )}
+            )} */}
+             {userRole === 'Reader' && requestStatus === "Draft" && (
+    <>
+      <button
+        className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
+        onClick={handleBulkUploadClick}
+      >
+        Bulk Upload (xls, csv)
+      </button>
+      <button
+        className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
+        onClick={downloadExcelTemplate}
+      >
+        Download Template
+      </button>
+    </>
+  )}
           </div>
         </div>
 
         <Spin spinning={loading} tip="Processing...">
           <div className="overflow-x-auto w-full">
-  <table className="min-w-full table-auto border-collapse">
-    <thead>
-      <tr className="bg-gray-100 text-left">
+       <table className="min-w-full table-auto border-collapse">
+       <thead>
+       <tr className="bg-gray-100 text-left">
         {tablehead.map((header, index) => (
           <th
             key={index}
@@ -241,8 +281,8 @@ export default function RequestPage() {
           Action
         </th>
       </tr>
-    </thead>
-    <tbody>
+      </thead>
+       <tbody>
       {tabledata.map((doc, index) => {
         const normalizedDoc: Record<string, any> = {};
         Object.entries(doc).forEach(([key, value]) => {
@@ -268,8 +308,21 @@ export default function RequestPage() {
               {doc.signDate || "—"}
             </td>
             <td className="p-3 whitespace-nowrap sticky right-[120px] bg-white border-b border-gray-100">
-              {doc.status || "—"}
-            </td>
+  {doc.status === "Rejected" && doc.Rejectreason ? (
+    <div className="relative group inline-flex items-center gap-1 cursor-pointer">
+      <span className="text-red-600">Rejected</span>
+      <span className="text-blue-500">ℹ️</span>
+
+      {/* Tooltip */}
+      <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 w-max max-w-xs bg-gray-800 text-white text-sm rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 whitespace-normal text-wrap">
+        {doc.Rejectreason}
+      </div>
+    </div>
+  ) : (
+    <span>{doc.status || "—"}</span>
+  )}
+</td>
+
             <td className="p-3 whitespace-nowrap sticky right-0 bg-white border-b border-gray-100">
               {/* Actions */}
               {doc.status === "Signed" && (
@@ -316,7 +369,11 @@ export default function RequestPage() {
                   ) : (
                     <button
                       className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                      onClick={() => ReqReject(doc._id)}
+                      // onClick={() => ReqReject(doc._id)}
+                      onClick={() => {
+                        setSelectedRowId(doc._id);
+                        setIsRejectModalVisible(true);
+                      }}
                     >
                       Reject
                     </button>
@@ -327,12 +384,31 @@ export default function RequestPage() {
           </tr>
         );
       })}
-    </tbody>
-  </table>
-</div>
-
+       </tbody>
+      </table>
+       </div>
         </Spin>
-      </div>
+       </div>
+       <Modal
+         title="Reject Request"
+         open={isRejectModalVisible}
+          onCancel={() => {
+          setIsRejectModalVisible(false);
+         setRejectReason("");
+            setSelectedRowId(null);
+         }}
+          onOk={handleRejectConfirm}
+       okText="Reject"
+          okButtonProps={{ danger: true }}>
+          <p>Please enter the reason for rejecting this request:</p>
+        <Input.TextArea
+           rows={4}
+           value={rejectReason}
+         onChange={(e) => setRejectReason(e.target.value)}
+          placeholder="Enter rejection reason..."
+      />
+       </Modal>
+
     </div>
   );
 }

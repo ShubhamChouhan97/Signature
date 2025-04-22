@@ -259,15 +259,34 @@ const prepareTemplateData = (data) => {
 export const SignRequest = async (req, res) => {
   const courtId = req.session.courtId;
   const userId= req.session.userId;
+  const role = req.session.role;
   const { requestId, signatureId } = req.body;
-
   try {
     // Fetch court data
     const courtdata = await court.findOne({ id: courtId });
     const courtName = courtdata.name;
-
+     let flag = 1;
     // Fetch request and related bulk data
     const request = await Request.findById(requestId);
+   if(role==2)
+   {
+  if(request.status==='Waited for Signature' && request.actions ==='Draft') 
+  { 
+    flag =0;
+  }
+   }
+   if(role==3)
+   {
+    if(request.status === 'Delegated' && request.actions === 'Delegated')
+    {
+      flag=0;
+    }
+   }
+
+   if(flag) 
+   {
+    res.status(401).json({ message: "Unauthorized  Access" });
+   }
     const bulkdataId = request.bulkdataId;
     const bulkdata = await Bulkdata.findById(bulkdataId);
 
@@ -288,8 +307,15 @@ export const SignRequest = async (req, res) => {
     // Save the updated data
     bulkdata.parsedData = updatedParsedData;
      await bulkdata.save();
-   
-    request.actions = 'Pending';
+     if(role == 2)
+     {
+      request.actions = 'Pending';
+     }
+     if(role == 3)
+     {
+      request.status ='Pending';
+     }
+    
     const readerId = request.createdById;
      await request.save();
     io.emit('request-reader', {
@@ -297,7 +323,7 @@ export const SignRequest = async (req, res) => {
     });
 
     // Generate individual PDFs
-    generatePDFsAndSave(updatedParsedData, request,bulkdata,requestId,readerId,userId);
+    generatePDFsAndSave(updatedParsedData, request,bulkdata,requestId,readerId,userId,role);
 
     res.status(200).json({ message: "Signature added to eligible entries and individual PDFs generated." });
   } catch (error) {
@@ -307,7 +333,7 @@ export const SignRequest = async (req, res) => {
 }; 
 
 
-const generatePDFsAndSave = async (parsedData, request, bulkdata, requestId, readerId, userId) => {
+const generatePDFsAndSave = async (parsedData, request, bulkdata, requestId, readerId, userId,role) => {
   const folderName = path.join('../','SignedData', `request-${requestId}`); // relative to 'uploads'
   const folderPath = path.resolve('uploads', folderName);
 
@@ -338,11 +364,15 @@ const generatePDFsAndSave = async (parsedData, request, bulkdata, requestId, rea
 
   bulkdata.parsedData = updatedParsedData;
   await bulkdata.save();
-
+if(role == 2)
+{
   request.status = 'Ready for Dispatch';
   request.actions = 'Signed';
+}else{
+  request.status = 'Ready for Dispatch';
+}
+ 
   await request.save();
-  console.log("")
   io.emit('request-reader', { readerId });
-  io.emit('request-officer', { userId });
+  io.emit('request-officer', { officerId:userId });
 };

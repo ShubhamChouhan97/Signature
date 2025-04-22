@@ -80,7 +80,7 @@ default:null,
   },
   status: {
     type: String,
-    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected'],
+    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected','Pending'],
     default: 'Draft',
   },
   deleteFlag:{
@@ -92,6 +92,10 @@ default:null,
         enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected'],
         default: 'Draft',
     },
+    rejectReason:{
+      type: String,
+       default: null,
+    }
 });
 
 const Request = mongoose.model('Request', RequestSchema);

@@ -36,7 +36,7 @@ const extractTags = (docxBuffer) => {
     return [...new Set(
       tags
         .map(tag => tag.replace(/[{}]/g, '').trim()) // Remove curly braces and trim
-        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage' && tag !== '%signature' && tag !== 'qrCode' && tag !== 'court' ) // Exclude specific tags
+        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage' && tag !== '%signature' && tag !== '%Signature' && tag !== 'qrCode' && tag !== 'court' ) // Exclude specific tags
     )];
   };
   
@@ -293,8 +293,11 @@ export const bulkUpload = async (req, res) => {
     const { requestId } = req.body;
     const request = await Request.findById(requestId);
     // take placeholder
+    const datavar = [];
     const placeholder = request.placeholders;
-  res.status(200).json(placeholder);
+     datavar.push(placeholder);
+     datavar.push(request.status);
+  res.status(200).json(datavar);
   }
 export const tabledata = async (req, res) => {
   try {
@@ -310,6 +313,7 @@ export const tabledata = async (req, res) => {
     const datavar = [];
     datavar.push(filteredData);
     datavar.push(bulk._id);
+   
 
     res.status(200).json(datavar);
   } catch (error) {
@@ -322,6 +326,15 @@ export const tabledata = async (req, res) => {
     const { requestId,officerId,officerName } = req.body;
     const request = await Request.findById(requestId);
     //  console.log(request);
+    let flag = 1;
+    if(request.status === 'Draft' && request.actions === 'Draft'){
+      flag = 0;;
+    }
+    if(flag)
+    {
+      res.status(401).json({ message: "Unauthorized  Access" });
+    }
+
      request.checkofficer.officerId=officerId;
      request.checkofficer.officerName=officerName;
      request.status = 'Waited for Signature';
@@ -377,64 +390,6 @@ export const tabledata = async (req, res) => {
       return res.status(500).json({ message: "Internal server error" });
     }
   };
-
-// export const PreviewRequest = async (req, res) => {
-//   const { requestId, rowId, bulkdataId,myId } = req.body;
-
-//      const userId = req.session.userId;
-
-//      if(userId===myId)
-//      {
-//       console.log("re",requestId);
-//       console.log("ro",rowId);
-//       console.log("d",bulkdataId);
-//      if (!requestId || !rowId || !bulkdataId) {
-//        return res.status(400).json({ error: "Missing required fields." });
-//      }
-   
-//      try {
-//        const request = await Request.findById(requestId);
-//        if (!request) return res.status(404).json({ error: "Request not found." });
-   
-//        const bulk = await Bulkdata.findById(bulkdataId);
-//        if (!bulk || !Array.isArray(bulk.parsedData)) {
-//          return res.status(404).json({ error: "Bulk data not found or malformed." });
-//        }
-   
-//        if (bulk.requestId !== requestId) {
-//          return res.status(403).json({ error: "Unauthorized access to bulk data." });
-//        }
-   
-//        const mapArray = bulk.parsedData;
-//        const rowEntry = mapArray.find((row) => {
-//          const obj = Object.fromEntries(row);
-//          return obj._id?.toString() === rowId;
-//        });
-   
-//        if (!rowEntry) {
-//          return res.status(404).json({ error: "Row data not found." });
-//        }
-   
-//        const rowData = Object.fromEntries(rowEntry);
-//        const rowDataNormalized = {};
-//        for (let [key, value] of Object.entries(rowData)) {
-//          rowDataNormalized[key.toLowerCase()] = value;
-//        }
-   
-//        const filepath = rowDataNormalized.filepath;
-//        if (!filepath) {
-//          return res.status(404).json({ error: "File path not found in row data." });
-//        }
-//    // console.log("fi",filepath);
-//        // Redirect to frontend or file serving route
-//        return res.redirect(`http://localhost:3000/${filepath}`);
-//      } catch (err) {
-//        console.error("Error in PreviewRequest:", err);
-//        res.status(500).json({ error: "Internal Server Error" });
-//      }
-//      }
-// };
-
 
 export const PreviewRequest = async (req, res) => {
   const { requestId, rowId, bulkdataId, myId } = req.body;
@@ -581,12 +536,12 @@ export const PreviewRequest = async (req, res) => {
   }
 };
 
-export const RejectRequestOfficer = async (req, res) => {
+export const RejectRequestByOfficer = async (req, res) => {
   const userRole = req.session.role;
   if (userRole === 2) {
     try {
-      const {requestId, rowId, bulkdataId } = req.body;
-      
+      const {requestId, rowId, bulkdataId,reason } = req.body;
+      console.log("d",reason);
       const request = await Request.findById(requestId);
       if (!request) return res.status(404).json({ error: "Request not found."
         });
@@ -608,7 +563,7 @@ export const RejectRequestOfficer = async (req, res) => {
       }
 
       mapArray[rowIndex].set('status', 'Rejected');
-
+      mapArray[rowIndex].set('Rejectreason', reason);
       bulk.markModified('parsedData'); // Tell Mongoose that a nested field has changed
       await bulk.save(); // Save changes
       await request.save();
@@ -661,7 +616,7 @@ export const DeleteRequestOfficer = async (req,res) =>{
       return res.status(200).json({ message: "Status updated successfully." });
 
     } catch (err) {
-      console.error("Error in RejectRequestOfficer:", err);
+      console.error("Error in Request:", err);
       return res.status(500).json({ error: "Internal Server Error", details: err.message });
     }
   } else {
@@ -696,17 +651,26 @@ export const DelegateRequest = async(req,res)=>{
 }
 }
 export const RejectRequest = async(req,res)=>{
-  const { requestId} = req.body;
+  const { requestId,reason } = req.body;
   const userRole = req.session.role;
   if (userRole === 2) {
     try {
-
+let flag =1;
       const request = await Request.findById(requestId);
+   if(request.actions === 'Draft' && ( request.status === 'Draft'||request.status === 'Waited for Signature'))
+   {
+    flag =0;
+   }
+   if(flag)
+   {
+    res.status(401).json({ message: "Unauthorized  Access" });
+   }
+   
 
       if (!request) return res.status(404).json({ error: "Request not found."});
          request.status = 'Rejected';
          request.actions = 'Rejected';
-    
+         request.rejectReason = reason;
         await request.save();
     const readerId = request.createdById
  io.emit('request-reader', {
@@ -796,35 +760,6 @@ const convertToPdfBuffer = (docxBuffer) => {
   });
 };
 
-// export const printRequest = async (req, res) => {
-//   try {
-//     const { requestId } = req.body;
-
-//     const request = await Request.findById(requestId);
-//     if (!request || !request.tempaltefile) {
-//       return res.status(400).json({ message: 'Template file not found for the request.' });
-//     }
-   
-//   const folderPath = request.datafolderPath;
-//     console.log("folderpath",folderPath);
-//     const mergedPdf = await PDFDocument.create();
-//     for (const pdfBuf of pdfBuffers) {
-//       const pdf = await PDFDocument.load(pdfBuf);
-//       const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-//       copiedPages.forEach((page) => mergedPdf.addPage(page));
-//     }
-
-//     const finalPdf = await mergedPdf.save();
-
-//     res.setHeader('Content-Type', 'application/pdf');
-//     res.setHeader('Content-Disposition', `inline; filename="print-${Date.now()}.pdf"`);
-//     res.send(Buffer.from(finalPdf));
-//   } catch (err) {
-//     console.error("Error while generating print PDF:", err);
-//     res.status(500).json({ message: 'Internal Server Error', error: err.message });
-//   }
-// };
-
 export const printRequest = async (req, res) => {
   try {
     const { requestId } = req.body;
@@ -833,7 +768,14 @@ export const printRequest = async (req, res) => {
     if (!request || !request.datafolderPath) {
       return res.status(400).json({ message: 'Folder path not found for the request.' });
     }
-
+    if(request.status === 'Signed' && (request.actions === 'Signed'|| request.actions==='Delegated'))
+      {
+       flag =0;
+      }
+     if(flag)
+     {
+      res.status(401).json({ message: "Unauthorized Access" });
+     }
     const folderPath = request.datafolderPath;
     console.log("folderpath", folderPath);
 
@@ -869,14 +811,22 @@ export const printRequest = async (req, res) => {
 export const downloadzip = async (req, res) => {
   try {
     const { requestId } = req.body;
-
+    let flag = 1;
     const request = await Request.findById(requestId);
     if (!request || !request.datafolderPath) {
       return res.status(400).json({ message: 'Data folder path not found.' });
     }
 
+    if(request.status === 'Signed' && (request.actions === 'Signed'|| request.actions==='Delegated'))
+    {
+     flag =0;
+    }
+   if(flag)
+   {
+    res.status(401).json({ message: "Unauthorized Access" });
+   }
     const folderPath = request.datafolderPath;
-    console.log("folderpath", folderPath);
+    
 
     if (!fs.existsSync(folderPath)) {
       return res.status(404).json({ message: 'Folder not found on server.' });
