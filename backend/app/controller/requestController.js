@@ -108,7 +108,6 @@ export const templateDownload = async (req, res) => {
     if (!request) {
       return res.status(404).json({ error: "Request not found." });
     }
-
     const fileRelativePath = request.tempaltefile;
     if (!fileRelativePath) {
       return res.status(400).json({ error: "No template file associated with this request" });
@@ -157,11 +156,18 @@ export const templateExcelDownload = async (req, res) => {
 
   try {
     const request = await Request.findById(requestId);
-
+    let flag =1;
     if (!request) {
       return res.status(404).json({ error: "Request not found." });
     }
-
+    if(request.status === 'Draft' && request.actions === 'Draft' )
+      {
+       flag =0;
+      }
+     if(flag)
+     {
+      res.status(401).json({ message: "Unauthorized Access" });
+     }
     const placeholders = request.placeholders;
 
     if (!placeholders || placeholders.length === 0) {
@@ -217,13 +223,22 @@ function normalizeKey(key) {
 
 export const bulkUpload = async (req, res) => {
   const requestId = req.body.requestId;
-
+  let flag =1;
   // Check if file is uploaded
   if (!req.file) {
     return res.status(400).send("No file uploaded.");
   }
 
   try {
+    const request = await Request.findById(requestId);
+    if(request.status === 'Draft' && request.actions === 'Draft' )
+      {
+       flag =0;
+      }
+     if(flag)
+     {
+      res.status(401).json({ message: "Unauthorized Access" });
+     }
     // Read the Excel file
     const workbook = XLSX.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0]; // Assuming the data is in the first sheet
@@ -237,9 +252,7 @@ export const bulkUpload = async (req, res) => {
     }
     // Example of logging dynamic headers for insight
     const headers = Object.keys(data[0] || {});
-  // console.log("Dynamic Headers:", headers);
-  //  console.log('data',data);
-    // handle the dynamic data accordingly
+
     const parsedData = data.map((row) => {
       const dynamicRow = { _id: new mongoose.Types.ObjectId() };
     
@@ -264,7 +277,7 @@ export const bulkUpload = async (req, res) => {
     const BulkDataId = bulk._id;
 
     // Update the request with the parsed data
-    const request = await Request.findById(requestId);
+  
     if (!request) {
       return res.status(404).send("Request not found.");
     }
@@ -323,7 +336,7 @@ export const tabledata = async (req, res) => {
 };
 
   export const sendtoofficer = async (req,res) =>{
-    const { requestId,officerId,officerName } = req.body;
+    const { requestId,officerId } = req.body;
     const request = await Request.findById(requestId);
     //  console.log(request);
     let flag = 1;
@@ -336,7 +349,6 @@ export const tabledata = async (req, res) => {
     }
 
      request.checkofficer.officerId=officerId;
-     request.checkofficer.officerName=officerName;
      request.status = 'Waited for Signature';
      request.actions= 'Draft';
      await request.save();
@@ -344,7 +356,6 @@ export const tabledata = async (req, res) => {
      io.emit('request-officer', {
       requestId,
       officerId,
-      officerName,
       status: request.status,
     });
   
@@ -352,9 +363,15 @@ export const tabledata = async (req, res) => {
   }
 
   export const deleteRequest = async (req,res)=>{
-    const { requestId } = req.body;
+    const { requestId,myId } = req.body;
     const request = await Request.findById(requestId);
-    request.deleteFlag = 'true';
+    if(request.createdById === myId)
+    {
+      request.deleteFlag = 'true';
+    }
+    else{
+      res.status(401).json({ message: "Unauthorized  Access" });
+    }
     await request.save();
     res.status(200).json("deleted");
   }
@@ -540,11 +557,15 @@ export const RejectRequestByOfficer = async (req, res) => {
   const userRole = req.session.role;
   if (userRole === 2) {
     try {
-      const {requestId, rowId, bulkdataId,reason } = req.body;
-      console.log("d",reason);
+      const {requestId, rowId, bulkdataId,reason,myId } = req.body;
       const request = await Request.findById(requestId);
-      if (!request) return res.status(404).json({ error: "Request not found."
-        });
+      if (!request) return res.status(404).json({ error: "Request not found."});
+     
+      // check officerId to my id for officer validation
+    if (request.checkofficer?.officerId !== myId) {
+      return res.status(403).json({ error: "Unauthorized access." });
+    }
+      
         request.rejectedDocuments++;
 
       const bulk = await Bulkdata.findById(bulkdataId);
@@ -578,14 +599,22 @@ export const RejectRequestByOfficer = async (req, res) => {
   }
 };
 
-export const DeleteRequestOfficer = async (req,res) =>{
+export const DeleteRequestReader = async (req,res) =>{
   const userRole = req.session.role;
+  let flag =1;
   if (userRole === 3) {
     try {
-      const { requestId,rowId, bulkdataId } = req.body;
+      const { requestId,rowId, bulkdataId,myId } = req.body;
 
-       
       const request = await Request.findById(requestId);
+     if(myId===request.createdById)
+     {
+      flag=0;
+     }
+     if(flag){
+      return res.status(403).json({ error: "You are not authorized to delete this request." });
+     }
+
       if (!request) return res.status(404).json({ error: "Request not found."
         });
         request.numberOfDocuments--;
@@ -625,22 +654,27 @@ export const DeleteRequestOfficer = async (req,res) =>{
 }
 
 export const DelegateRequest = async(req,res)=>{
-  const { requestId} = req.body;
+  const { requestId,myId} = req.body;
   const userRole = req.session.role;
   if (userRole === 2) {
     try {
 
       const request = await Request.findById(requestId);
-
+      if (request.checkofficer?.officerId !== myId) {
+        return res.status(403).json({ error: "Unauthorized access." });
+      }
+       if(!request.status==='Draft'&& request.actions === 'Draft')
+       {
+        return res.status(403).json({ error: "Unauthorized access." });
+       }
       if (!request) return res.status(404).json({ error: "Request not found."});
+
          request.status = 'Delegated';
          request.actions = 'Delegated';
     
         await request.save();
-    const readerId = request.createdById
- io.emit('request-reader', {
-  readerId,
-    });
+        const readerId = request.createdById
+       io.emit('request-reader', { readerId });
         return res.status(200).json({ message: "Request delegated successfully." });
         }catch (err) {
           return res.status(500).json({ error: "Internal Server Error",message:err });
@@ -650,42 +684,111 @@ export const DelegateRequest = async(req,res)=>{
   return res.status(403).json({ error: "Unauthorized access" });
 }
 }
-export const RejectRequest = async(req,res)=>{
-  const { requestId,reason } = req.body;
+// export const RejectRequest = async(req,res)=>{
+//   const { requestId,reason,myId } = req.body;
+//   const userRole = req.session.role;
+//   if (userRole === 2) {
+//     try {
+//        let flag =1;
+//        const request = await Request.findById(requestId);
+//        if (!request) return res.status(404).json({ error: "Request not found."});
+
+//       if (!request.checkofficer.some(officer => officer.officerId === myId)) {
+//         return res.status(403).json({ error: "Unauthorized access." });
+//       }
+
+//         if(request.actions === 'Draft' && ( request.status === 'Draft'||request.status === 'Waited for Signature'))
+//        {
+//         flag =0;
+//         }
+//          if(flag)
+//        {
+//          res.status(401).json({ message: "Unauthorized  Access" });
+//        }
+   
+//          request.status = 'Rejected';
+//          request.actions = 'Rejected';
+//          request.rejectReason = reason;
+//             await request.save();
+//            const readerId = request.createdById
+//           io.emit('request-reader', {readerId});
+//         return res.status(200).json({ message: "Request Rejected successfully." });
+//         }catch (err) {
+//           console.error("Error in Reject Request:", err);
+//           return res.status(500).json({ error: "Internal Server Error" });
+//         }
+  
+// }else{
+//   return res.status(403).json({ error: "Unauthorized access" });
+// }
+// }
+export const RejectRequest = async (req, res) => {
+  const { requestId, reason, myId } = req.body;
   const userRole = req.session.role;
+
   if (userRole === 2) {
     try {
-let flag =1;
+      let flag = 1;
       const request = await Request.findById(requestId);
-   if(request.actions === 'Draft' && ( request.status === 'Draft'||request.status === 'Waited for Signature'))
-   {
-    flag =0;
-   }
-   if(flag)
-   {
-    res.status(401).json({ message: "Unauthorized  Access" });
-   }
-   
+      if (!request) return res.status(404).json({ error: "Request not found." });
 
-      if (!request) return res.status(404).json({ error: "Request not found."});
-         request.status = 'Rejected';
-         request.actions = 'Rejected';
-         request.rejectReason = reason;
-        await request.save();
-    const readerId = request.createdById
- io.emit('request-reader', {
-  readerId,
-    });
-        return res.status(200).json({ message: "Request delegated successfully." });
-        }catch (err) {
-          console.error("Error in DelegateRequest:", err);
-          return res.status(500).json({ error: "Internal Server Error" });
+      //  Direct object check
+      if (request.checkofficer?.officerId !== myId) {
+        return res.status(403).json({ error: "Unauthorized access." });
+      }
+
+      //  Action & status check
+      if (request.actions === 'Draft' && 
+          (request.status === 'Draft' || request.status === 'Waited for Signature')) {
+        flag = 0;
+      }
+
+      if (flag) {
+        return res.status(401).json({ message: "Unauthorized Access" });
+      }
+        const bulkid = request.bulkdataId;
+
+      const bulk = await Bulkdata.findById(bulkid);
+      if (!bulk || !Array.isArray(bulk.parsedData)) {
+        return res.status(404).json({ error: "Bulk data not found or malformed." });
+      }
+
+
+
+      const mapArray = bulk.parsedData;
+       let doccount =0;
+      mapArray.forEach((item, index) => {
+        if (item instanceof Map) {
+          doccount++;
+          item.set('status', 'Rejected');
+          item.set('Rejectreason', 'Full request rejected');
         }
-  
-}else{
-  return res.status(403).json({ error: "Unauthorized access" });
-}
-}
+      });
+      
+      bulk.markModified('parsedData'); // Notify Mongoose of deep changes
+      await bulk.save(); // Persist to DB
+      //  Update request status
+      request.status = 'Rejected';
+      request.actions = 'Rejected';
+      request.rejectedDocuments = doccount;
+      request.rejectReason = reason;
+      await request.save();
+
+      //  Notify frontend
+      const readerId = request.createdById;
+      io.emit('request-reader', { readerId });
+
+      return res.status(200).json({ message: "Request Rejected successfully." });
+
+    } catch (err) {
+      console.error("Error in Reject Request:", err);
+      return res.status(500).json({ error: "Internal Server Error" });
+    }
+
+  } else {
+    return res.status(403).json({ error: "Unauthorized access" });
+  }
+};
 
 const prepareTemplateData = (data) => {
   const transformed = {};
@@ -763,11 +866,12 @@ const convertToPdfBuffer = (docxBuffer) => {
 export const printRequest = async (req, res) => {
   try {
     const { requestId } = req.body;
-
+   let flag = 1;
     const request = await Request.findById(requestId);
     if (!request || !request.datafolderPath) {
       return res.status(400).json({ message: 'Folder path not found for the request.' });
     }
+
     if(request.status === 'Signed' && (request.actions === 'Signed'|| request.actions==='Delegated'))
       {
        flag =0;

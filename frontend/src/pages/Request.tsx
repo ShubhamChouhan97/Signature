@@ -27,6 +27,7 @@ export default function RequestPage() {
   const [tablehead, settablehead] = useState<Request[]>([]);
   const [tabledata, settabledata] = useState<Request[]>([]);
   const [requestStatus,setrequestStatus] = useState<string | null>(null);
+
   const fetchData = async () => {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
@@ -41,6 +42,7 @@ export default function RequestPage() {
   
       settablehead(header);
       setrequestStatus(responseData[1]);
+      
      
     } catch (error) {
       console.error("Error fetching requests:", error);
@@ -51,6 +53,12 @@ export default function RequestPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  // useEffect(() => {
+  //   if (requestStatus !== null) {
+  //     console.log("Updated requestStatus:", requestStatus);
+  //   }
+  // }, [requestStatus]);
 
   const fetchtableData = async () => {
     const pathSegments = location.pathname.split("/");
@@ -167,8 +175,8 @@ export default function RequestPage() {
     const pathSegments = location.pathname.split("/");
     const requestId = pathSegments[pathSegments.length - 1];
     try {
-      const response = await mainClient.request("POST", "/api/request/DeleteRequestOfficer", {
-        data: { requestId, rowId, bulkdataId },
+      const response = await mainClient.request("POST", "/api/request/DeleteRequestReader", {
+        data: { requestId, rowId, bulkdataId,myId },
       });
       if (response.status === 200) {
         setLoading(true);
@@ -194,6 +202,7 @@ export default function RequestPage() {
           rowId: selectedRowId,
           bulkdataId,
           reason: rejectReason,
+          myId:myId,
         },
       });
   
@@ -209,6 +218,18 @@ export default function RequestPage() {
     }
   };
   
+
+  const ReqReject = async (rowId: string) => {
+    if(requestStatus === "Rejected")
+    {
+      message.error("Full Request is already Rejected");
+    }
+    else{
+      setSelectedRowId(rowId);
+    setIsRejectModalVisible(true);
+    }
+  }
+
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="max-w-5xl mx-auto bg-white shadow-md rounded-xl p-6">
@@ -222,23 +243,7 @@ export default function RequestPage() {
               ref={fileInputRef}
               onChange={handleFileChange}
             />
-            {/* {userRole === 'Reader' && (
-              <>
-                <button
-                  className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
-                  onClick={handleBulkUploadClick}
-                >
-                  Bulk Upload (xls, csv)
-                </button>
-                <button
-                  className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
-                  onClick={downloadExcelTemplate}
-                >
-                  Download Template
-                </button>
-              </>
-            )} */}
-             {userRole === 'Reader' && requestStatus === "Draft" && (
+             {["Reader", "Officer"].includes(userRole ?? "") && requestStatus === "Draft"  && (
     <>
       <button
         className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
@@ -254,6 +259,23 @@ export default function RequestPage() {
       </button>
     </>
   )}
+  {/* {["Reader", "Officer"].includes(userRole) && ["Draft"].includes(requestStatus ?? "") && (
+  <>
+    <button
+      className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
+      onClick={handleBulkUploadClick}
+    >
+      Bulk Upload (xls, csv)
+    </button>
+    <button
+      className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
+      onClick={downloadExcelTemplate}
+    >
+      Download Template
+    </button>
+  </>
+)} */}
+
           </div>
         </div>
 
@@ -370,10 +392,11 @@ export default function RequestPage() {
                     <button
                       className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
                       // onClick={() => ReqReject(doc._id)}
-                      onClick={() => {
-                        setSelectedRowId(doc._id);
-                        setIsRejectModalVisible(true);
-                      }}
+                      onClick={() => ReqReject(doc._id)}
+                      // onClick={() => {
+                      //   setSelectedRowId(doc._id);
+                      //   setIsRejectModalVisible(true);
+                      // }}
                     >
                       Reject
                     </button>

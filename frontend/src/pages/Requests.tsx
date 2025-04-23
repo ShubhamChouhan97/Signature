@@ -292,6 +292,7 @@ const getActions = (req: Request) => {
       const response = await mainClient.request("POST", "/api/request/deleteRequest", {
         data: {
           requestId: request._id, 
+          myId:myId,
         },
       });
       if (response.status === 200) {
@@ -455,21 +456,6 @@ const handlePrint = async (request: Request) => {
   const handleRejected = async (request :Request)=>{
     setSelectedRowId(request._id);
     setIsRejectModalVisible(true);
-    // try {
-    //   const response = await mainClient.request("POST", "/api/request/RejectRequest", {
-    //     data: {
-    //       requestId: request._id, // Use request._id directly instead of selectedRequest
-    //     },
-    //   });
-    //   if (response.status === 200) {
-    //     setLoadvar((prev)=>prev+1);
-    //     message.success('Request Rejected Successfully')
-    //   } else {
-    //     message.error("Failed to Reject request.");
-    //   }
-    // } catch (error) {
-    //   message.error("Failed to Reject request.");
-    // }
   }
   const handleRejectConfirm = async () => {
     if (!rejectReason.trim()) {
@@ -482,6 +468,7 @@ const handlePrint = async (request: Request) => {
              data: {
               requestId: selectedRowId, // Use request._id directly instead of selectedRequest
               reason :rejectReason,
+              myId:myId,
             },
           });
   
@@ -503,6 +490,7 @@ const handlePrint = async (request: Request) => {
       const response = await mainClient.request("POST", "/api/request/DelegateRequest", {
         data: {
           requestId: request._id, // Use request._id directly instead of selectedRequest
+          myId:myId,
         },
       });
       if (response.status === 200) {
