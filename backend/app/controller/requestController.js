@@ -792,7 +792,7 @@ export const printRequest = async (req, res) => {
     if (!request || !request.datafolderPath) {
       return res.status(400).json({ message: 'Folder path not found for the request.' });
     }
-  
+   
     if(request.status === 'Ready for Dispatch' && (request.actions === 'Signed'|| request.actions==='Delegated'))
       {
        flag =0;
@@ -894,7 +894,7 @@ export const qrverifypdf = async(req,res)=>{
 
     if (!rowEntry) {
       return res.status(404).json({ error: "Row data not found." });
-    }
+    } 
 
     const rowData = Object.fromEntries(rowEntry);
     const filepath = rowData.filepath;
