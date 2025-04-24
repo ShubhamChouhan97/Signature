@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { string } from "zod";
 
 function getCurrent12HourTime() {
   return new Date().toLocaleString('en-US', {
@@ -55,10 +56,6 @@ const RequestSchema = new mongoose.Schema({
       type: String,
       default:null,
     },
-    officerName: {
-      type: String,
-      default:null,
-    }
   },
   numberOfDocuments: {
     type: Number,
@@ -73,9 +70,13 @@ const RequestSchema = new mongoose.Schema({
     type: String,
     default: getCurrent12HourTime,
   },
+  datafolderPath:{
+type:String,
+default:null,
+  },
   status: {
     type: String,
-    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected'],
+    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected','Pending'],
     default: 'Draft',
   },
   deleteFlag:{
@@ -87,6 +88,10 @@ const RequestSchema = new mongoose.Schema({
         enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected'],
         default: 'Draft',
     },
+    rejectReason:{
+      type: String,
+       default: null,
+    }
 });
 
 const Request = mongoose.model('Request', RequestSchema);

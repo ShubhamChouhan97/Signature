@@ -32,6 +32,7 @@ app.use(cors({
 }))
 // make uplaod static
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use('/SignedData',express.static(path.join(__dirname,"../SignedData")));
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, '/views'));
 app.use(sessionMiddleware);

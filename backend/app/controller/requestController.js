@@ -36,7 +36,7 @@ const extractTags = (docxBuffer) => {
     return [...new Set(
       tags
         .map(tag => tag.replace(/[{}]/g, '').trim()) // Remove curly braces and trim
-        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage' && tag !== '%signature' && tag !== 'qrCode' && tag !== 'court' ) // Exclude specific tags
+        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage' && tag !== '%signature' && tag !== '%Signature' && tag !== 'qrCode' && tag !== 'court' ) // Exclude specific tags
     )];
   };
   
@@ -108,7 +108,6 @@ export const templateDownload = async (req, res) => {
     if (!request) {
       return res.status(404).json({ error: "Request not found." });
     }
-
     const fileRelativePath = request.tempaltefile;
     if (!fileRelativePath) {
       return res.status(400).json({ error: "No template file associated with this request" });
@@ -157,11 +156,18 @@ export const templateExcelDownload = async (req, res) => {
 
   try {
     const request = await Request.findById(requestId);
-
+    let flag =1;
     if (!request) {
       return res.status(404).json({ error: "Request not found." });
     }
-
+    if(request.status === 'Draft' && request.actions === 'Draft' )
+      {
+       flag =0;
+      }
+     if(flag)
+     {
+      res.status(401).json({ message: "Unauthorized Access" });
+     }
     const placeholders = request.placeholders;
 
     if (!placeholders || placeholders.length === 0) {
@@ -217,13 +223,22 @@ function normalizeKey(key) {
 
 export const bulkUpload = async (req, res) => {
   const requestId = req.body.requestId;
-
+  let flag =1;
   // Check if file is uploaded
   if (!req.file) {
     return res.status(400).send("No file uploaded.");
   }
 
   try {
+    const request = await Request.findById(requestId);
+    if(request.status === 'Draft' && request.actions === 'Draft' )
+      {
+       flag =0;
+      }
+     if(flag)
+     {
+      res.status(401).json({ message: "Unauthorized Access" });
+     }
     // Read the Excel file
     const workbook = XLSX.readFile(req.file.path);
     const sheetName = workbook.SheetNames[0]; // Assuming the data is in the first sheet
@@ -237,9 +252,7 @@ export const bulkUpload = async (req, res) => {
     }
     // Example of logging dynamic headers for insight
     const headers = Object.keys(data[0] || {});
-  // console.log("Dynamic Headers:", headers);
-  //  console.log('data',data);
-    // handle the dynamic data accordingly
+
     const parsedData = data.map((row) => {
       const dynamicRow = { _id: new mongoose.Types.ObjectId() };
     
@@ -264,7 +277,7 @@ export const bulkUpload = async (req, res) => {
     const BulkDataId = bulk._id;
 
     // Update the request with the parsed data
-    const request = await Request.findById(requestId);
+  
     if (!request) {
       return res.status(404).send("Request not found.");
     }
@@ -293,8 +306,11 @@ export const bulkUpload = async (req, res) => {
     const { requestId } = req.body;
     const request = await Request.findById(requestId);
     // take placeholder
+    const datavar = [];
     const placeholder = request.placeholders;
-  res.status(200).json(placeholder);
+     datavar.push(placeholder);
+     datavar.push(request.status);
+  res.status(200).json(datavar);
   }
 export const tabledata = async (req, res) => {
   try {
@@ -310,6 +326,7 @@ export const tabledata = async (req, res) => {
     const datavar = [];
     datavar.push(filteredData);
     datavar.push(bulk._id);
+   
 
     res.status(200).json(datavar);
   } catch (error) {
@@ -319,11 +336,19 @@ export const tabledata = async (req, res) => {
 };
 
   export const sendtoofficer = async (req,res) =>{
-    const { requestId,officerId,officerName } = req.body;
+    const { requestId,officerId } = req.body;
     const request = await Request.findById(requestId);
     //  console.log(request);
+    let flag = 1;
+    if(request.status === 'Draft' && request.actions === 'Draft'){
+      flag = 0;;
+    }
+    if(flag)
+    {
+      res.status(401).json({ message: "Unauthorized  Access" });
+    }
+
      request.checkofficer.officerId=officerId;
-     request.checkofficer.officerName=officerName;
      request.status = 'Waited for Signature';
      request.actions= 'Draft';
      await request.save();
@@ -331,7 +356,6 @@ export const tabledata = async (req, res) => {
      io.emit('request-officer', {
       requestId,
       officerId,
-      officerName,
       status: request.status,
     });
   
@@ -339,9 +363,15 @@ export const tabledata = async (req, res) => {
   }
 
   export const deleteRequest = async (req,res)=>{
-    const { requestId } = req.body;
+    const { requestId,myId } = req.body;
     const request = await Request.findById(requestId);
-    request.deleteFlag = 'true';
+    if(request.createdById === myId)
+    {
+      request.deleteFlag = 'true';
+    }
+    else{
+      res.status(401).json({ message: "Unauthorized  Access" });
+    }
     await request.save();
     res.status(200).json("deleted");
   }
@@ -377,9 +407,14 @@ export const tabledata = async (req, res) => {
       return res.status(500).json({ message: "Internal server error" });
     }
   };
-  
+
 export const PreviewRequest = async (req, res) => {
-  const { requestId, rowId, bulkdataId } = req.body;
+  const { requestId, rowId, bulkdataId, myId } = req.body;
+  const userId = req.session.userId;
+
+  if (userId !== myId) {
+    return res.status(403).json({ error: "Unauthorized" });
+  }
 
   if (!requestId || !rowId || !bulkdataId) {
     return res.status(400).json({ error: "Missing required fields." });
@@ -388,7 +423,7 @@ export const PreviewRequest = async (req, res) => {
   try {
     const request = await Request.findById(requestId);
     if (!request) return res.status(404).json({ error: "Request not found." });
-
+    
     const fileRelativePath = request.tempaltefile;
     if (!fileRelativePath) {
       return res.status(400).json({ error: "No template file associated with this request." });
@@ -402,93 +437,135 @@ export const PreviewRequest = async (req, res) => {
       return res.status(404).json({ error: "Bulk data not found or malformed." });
     }
 
-    const mapArray = bulk.parsedData;
-    const rowMap = mapArray.find((row) => row.get("_id").toString() === rowId);
-    if (!rowMap) return res.status(404).json({ error: "Row data not found." });
 
-    // Convert rowMap to case-insensitive key-value map
-    const rowDataNormalized = {};
-    for (let [key, value] of rowMap.entries()) {
-      rowDataNormalized[key.toLowerCase()] = value;
-    }
-
-    // Read the template
-    const content = fs.readFileSync(inputPath, "binary");
-    const zip = new PizZip(content);
-
-    // Extract tags from template (like Name, CaseID, etc.)
-    const docForTags = new Docxtemplater(zip);
-    const tags = docForTags.getFullText()
-      .match(/\{(?:%)?([a-zA-Z0-9_]+)(?:%)?\}/g)
-      ?.map(tag => tag.replace(/\{|\}|%/g, '')) || [];
-
-    // Build final data by matching case-insensitively
-    const finalData = {};
-    tags.forEach((tag) => {
-      const lowerTag = tag.toLowerCase();
-      if (rowDataNormalized[lowerTag] !== undefined) {
-        finalData[tag] = rowDataNormalized[lowerTag]; // Use original case of tag for the template
+    if(request.actions=='Signed')
+    {
+      if (bulk.requestId.toString() !== requestId.toString()) {
+        return res.status(403).json({ error: "Unauthorized access to bulk data." });
       }
-    });
-
-    // Handle signature image tag if present
-    if (finalData["signature"]) {
-      const signaturePath = path.join(process.cwd(), finalData["signature"].replace(/\\/g, "/"));
-      if (fs.existsSync(signaturePath)) {
-        finalData["signature"] = signaturePath; // Must match {%signature%} in template
+  
+      const rowEntry = bulk.parsedData.find((row) => {
+        try {
+          const obj = Object.fromEntries(row);
+          return obj._id?.toString() === rowId;
+        } catch {
+          return false;
+        }
+      });
+  
+      if (!rowEntry) {
+        return res.status(404).json({ error: "Row data not found." });
       }
-    }
-
-    // Prepare for image rendering
-    const imageModule = new ImageModule({
-      centered: false,
-      getImage: (tagValue) => fs.readFileSync(tagValue),
-      getSize: () => [100, 30],
-    });
-
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      modules: [imageModule],
-    });
-
-    doc.render(finalData);
-
-    const buf = doc.getZip().generate({ type: "nodebuffer" });
-    const tempDocxPath = path.join(process.cwd(), "temp", `filled_${Date.now()}.docx`);
-    const outputPath = tempDocxPath.replace(".docx", ".pdf");
-
-    fs.writeFileSync(tempDocxPath, buf);
-
-    convert(tempDocxPath, outputPath, function (err) {
-      fs.unlink(tempDocxPath, () => {});
-      if (err) {
-        console.error("Conversion error:", err);
-        return res.status(500).json({ error: "Conversion failed" });
+      const rowData = Object.fromEntries(rowEntry);
+      const filepath = rowData.filepath;
+  
+      if (!filepath) {
+        return res.status(404).json({ error: "File path not found in row data." });
       }
-
+  
+      const absolutePath = path.resolve(filepath);
+      if (!fs.existsSync(absolutePath)) {
+        return res.status(404).json({ error: "File not found on server." });
+      }
+  
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
-      fs.createReadStream(outputPath)
-        .on("end", () => fs.unlink(outputPath, () => {}))
-        .pipe(res);
-    });
+      res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
+  
+      return res.sendFile(absolutePath);
+    }else{
+      const mapArray = bulk.parsedData;
+      const rowMap = mapArray.find((row) => row.get("_id").toString() === rowId);
+      if (!rowMap) return res.status(404).json({ error: "Row data not found." });
+  
+      // Convert rowMap to case-insensitive key-value map
+      const rowDataNormalized = {};
+      for (let [key, value] of rowMap.entries()) {
+        rowDataNormalized[key.toLowerCase()] = value;
+      }
+  
+      // Read the template
+      const content = fs.readFileSync(inputPath, "binary");
+      const zip = new PizZip(content);
+  
+      // Extract tags from template (like Name, CaseID, etc.)
+      const docForTags = new Docxtemplater(zip);
+      const tags = docForTags.getFullText()
+        .match(/\{(?:%)?([a-zA-Z0-9_]+)(?:%)?\}/g)
+        ?.map(tag => tag.replace(/\{|\}|%/g, '')) || [];
+  
+      // Build final data by matching case-insensitively
+      const finalData = {};
+      tags.forEach((tag) => {
+        const lowerTag = tag.toLowerCase();
+        if (rowDataNormalized[lowerTag] !== undefined) {
+          finalData[tag] = rowDataNormalized[lowerTag]; // Use original case of tag for the template
+        }
+      });
+  
+      // Handle signature image tag if present
+      if (finalData["signature"]) {
+        const signaturePath = path.join(process.cwd(), finalData["signature"].replace(/\\/g, "/"));
+        if (fs.existsSync(signaturePath)) {
+          finalData["signature"] = signaturePath; // Must match {%signature%} in template
+        }
+      }
+  
+      // Prepare for image rendering
+      const imageModule = new ImageModule({
+        centered: false,
+        getImage: (tagValue) => fs.readFileSync(tagValue),
+        getSize: () => [100, 30],
+      });
+  
+      const doc = new Docxtemplater(zip, {
+        paragraphLoop: true,
+        linebreaks: true,
+        modules: [imageModule],
+      });
+  
+      doc.render(finalData);
+  
+      const buf = doc.getZip().generate({ type: "nodebuffer" });
+      const tempDocxPath = path.join(process.cwd(), "temp", `filled_${Date.now()}.docx`);
+      const outputPath = tempDocxPath.replace(".docx", ".pdf");
+  
+      fs.writeFileSync(tempDocxPath, buf);
+  
+      convert(tempDocxPath, outputPath, function (err) {
+        fs.unlink(tempDocxPath, () => {});
+        if (err) {
+          console.error("Conversion error:", err);
+          return res.status(500).json({ error: "Conversion failed" });
+        }
+  
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", 'inline; filename="preview.pdf"');
+        fs.createReadStream(outputPath)
+          .on("end", () => fs.unlink(outputPath, () => {}))
+          .pipe(res);
+      });
+    }
+
+   
   } catch (err) {
     console.error("Error in PreviewRequest:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };
 
-
-export const RejectRequestOfficer = async (req, res) => {
+export const RejectRequestByOfficer = async (req, res) => {
   const userRole = req.session.role;
   if (userRole === 2) {
     try {
-      const {requestId, rowId, bulkdataId } = req.body;
-      
+      const {requestId, rowId, bulkdataId,reason,myId } = req.body;
       const request = await Request.findById(requestId);
-      if (!request) return res.status(404).json({ error: "Request not found."
-        });
+      if (!request) return res.status(404).json({ error: "Request not found."});
+     
+      // check officerId to my id for officer validation
+    if (request.checkofficer?.officerId !== myId) {
+      return res.status(403).json({ error: "Unauthorized access." });
+    }
+      
         request.rejectedDocuments++;
 
       const bulk = await Bulkdata.findById(bulkdataId);
@@ -507,7 +584,7 @@ export const RejectRequestOfficer = async (req, res) => {
       }
 
       mapArray[rowIndex].set('status', 'Rejected');
-
+      mapArray[rowIndex].set('Rejectreason', reason);
       bulk.markModified('parsedData'); // Tell Mongoose that a nested field has changed
       await bulk.save(); // Save changes
       await request.save();
@@ -522,14 +599,22 @@ export const RejectRequestOfficer = async (req, res) => {
   }
 };
 
-export const DeleteRequestOfficer = async (req,res) =>{
+export const DeleteRequestReader = async (req,res) =>{
   const userRole = req.session.role;
+  let flag =1;
   if (userRole === 3) {
     try {
-      const { requestId,rowId, bulkdataId } = req.body;
+      const { requestId,rowId, bulkdataId,myId } = req.body;
 
-       
       const request = await Request.findById(requestId);
+     if(myId===request.createdById)
+     {
+      flag=0;
+     }
+     if(flag){
+      return res.status(403).json({ error: "You are not authorized to delete this request." });
+     }
+
       if (!request) return res.status(404).json({ error: "Request not found."
         });
         request.numberOfDocuments--;
@@ -560,7 +645,7 @@ export const DeleteRequestOfficer = async (req,res) =>{
       return res.status(200).json({ message: "Status updated successfully." });
 
     } catch (err) {
-      console.error("Error in RejectRequestOfficer:", err);
+      console.error("Error in Request:", err);
       return res.status(500).json({ error: "Internal Server Error", details: err.message });
     }
   } else {
@@ -569,22 +654,27 @@ export const DeleteRequestOfficer = async (req,res) =>{
 }
 
 export const DelegateRequest = async(req,res)=>{
-  const { requestId} = req.body;
+  const { requestId,myId} = req.body;
   const userRole = req.session.role;
   if (userRole === 2) {
     try {
 
       const request = await Request.findById(requestId);
-
+      if (request.checkofficer?.officerId !== myId) {
+        return res.status(403).json({ error: "Unauthorized access." });
+      }
+       if(!request.status==='Draft'&& request.actions === 'Draft')
+       {
+        return res.status(403).json({ error: "Unauthorized access." });
+       }
       if (!request) return res.status(404).json({ error: "Request not found."});
+
          request.status = 'Delegated';
          request.actions = 'Delegated';
     
         await request.save();
-    const readerId = request.createdById
- io.emit('request-reader', {
-  readerId,
-    });
+        const readerId = request.createdById
+       io.emit('request-reader', { readerId });
         return res.status(200).json({ message: "Request delegated successfully." });
         }catch (err) {
           return res.status(500).json({ error: "Internal Server Error",message:err });
@@ -594,147 +684,142 @@ export const DelegateRequest = async(req,res)=>{
   return res.status(403).json({ error: "Unauthorized access" });
 }
 }
-export const RejectRequest = async(req,res)=>{
-  const { requestId} = req.body;
+// export const RejectRequest = async(req,res)=>{
+//   const { requestId,reason,myId } = req.body;
+//   const userRole = req.session.role;
+//   if (userRole === 2) {
+//     try {
+//        let flag =1;
+//        const request = await Request.findById(requestId);
+//        if (!request) return res.status(404).json({ error: "Request not found."});
+
+//       if (!request.checkofficer.some(officer => officer.officerId === myId)) {
+//         return res.status(403).json({ error: "Unauthorized access." });
+//       }
+
+//         if(request.actions === 'Draft' && ( request.status === 'Draft'||request.status === 'Waited for Signature'))
+//        {
+//         flag =0;
+//         }
+//          if(flag)
+//        {
+//          res.status(401).json({ message: "Unauthorized  Access" });
+//        }
+   
+//          request.status = 'Rejected';
+//          request.actions = 'Rejected';
+//          request.rejectReason = reason;
+//             await request.save();
+//            const readerId = request.createdById
+//           io.emit('request-reader', {readerId});
+//         return res.status(200).json({ message: "Request Rejected successfully." });
+//         }catch (err) {
+//           console.error("Error in Reject Request:", err);
+//           return res.status(500).json({ error: "Internal Server Error" });
+//         }
+  
+// }else{
+//   return res.status(403).json({ error: "Unauthorized access" });
+// }
+// }
+export const RejectRequest = async (req, res) => {
+  const { requestId, reason, myId } = req.body;
   const userRole = req.session.role;
+
   if (userRole === 2) {
     try {
-
       const request = await Request.findById(requestId);
+      if (!request) return res.status(404).json({ error: "Request not found." });
 
-      if (!request) return res.status(404).json({ error: "Request not found."});
-         request.status = 'Rejected';
-         request.actions = 'Rejected';
-    
-        await request.save();
-    const readerId = request.createdById
- io.emit('request-reader', {
-  readerId,
-    });
-        return res.status(200).json({ message: "Request delegated successfully." });
-        }catch (err) {
-          console.error("Error in DelegateRequest:", err);
-          return res.status(500).json({ error: "Internal Server Error" });
-        }
-  
-}else{
-  return res.status(403).json({ error: "Unauthorized access" });
-}
-}
-
-const prepareTemplateData = (data) => {
-  const transformed = {};
-
-  for (const [key, value] of Object.entries(data)) {
-    let newValue = value ?? '';
-
-    // Detect image tags like Signature
-    if (key.toLowerCase().includes("Signature") && typeof newValue === "string") {
-      const absoluteSigPath = path.resolve(newValue);
-      if (fs.existsSync(absoluteSigPath)) {
-        newValue = absoluteSigPath;
-      } else {
-        console.warn(`Signature image not found at ${absoluteSigPath}`);
-        newValue = path.resolve('placeholder.jpg');
+      //  Direct object check
+      if (request.checkofficer?.officerId !== myId) {
+        return res.status(403).json({ error: "Unauthorized access." });
       }
+
+      //  Action & status check
+      if (request.actions !== 'Draft' && 
+          (request.status !== 'Draft' || request.status !== 'Waited for Signature')) {
+            return res.status(401).json({ message: "Unauthorized Access as" });
+      }
+        const bulkid = request.bulkdataId;
+
+      const bulk = await Bulkdata.findById(bulkid);
+      if (!bulk || !Array.isArray(bulk.parsedData)) {
+        return res.status(404).json({ error: "Bulk data not found or malformed." });
+      }
+
+
+
+      const mapArray = bulk.parsedData;
+       let doccount =0;
+      mapArray.forEach((item, index) => {
+        if (item instanceof Map) {
+          doccount++;
+          item.set('status', 'Rejected');
+          item.set('Rejectreason', 'Full request rejected');
+        }
+      });
+      
+      bulk.markModified('parsedData'); // Notify Mongoose of deep changes
+      await bulk.save(); // Persist to DB
+      //  Update request status
+      request.status = 'Rejected';
+      request.actions = 'Rejected';
+      request.rejectedDocuments = doccount;
+      request.rejectReason = reason;
+      await request.save();
+
+      //  Notify frontend
+      const readerId = request.createdById;
+      io.emit('request-reader', { readerId });
+
+      return res.status(200).json({ message: "Request Rejected successfully." });
+
+    } catch (err) {
+      console.error("Error in Reject Request:", err);
+      return res.status(500).json({ error: "Internal Server Error" });
     }
 
-    // Transform 'caseid' => 'CaseId', 'signature' => 'Signature'
-    const transformedKey = key
-      .replace(/(^\w)/, (m) => m.toUpperCase()) // Capitalize first letter
-      .replace(/(_\w)/g, (m) => m[1].toUpperCase()); // Remove underscores and capitalize next letter
-
-    transformed[transformedKey] = newValue;
+  } else {
+    return res.status(403).json({ error: "Unauthorized access" });
   }
-
-  return transformed;
 };
-
-
-const generateDocxFromTemplate = (templatePath, data) => {
-  const content = fs.readFileSync(templatePath, 'binary');
-  const zip = new PizZip(content);
-
-  const imageModule = new ImageModule({
-    centered: false,
-    getImage: (tagValue) => {
-      try {
-        return fs.readFileSync(tagValue); // tagValue is already a file path
-      } catch (err) {
-        console.error(`Error reading image at ${tagValue}:`, err);
-        return fs.readFileSync(path.resolve('placeholder.jpg'));
-      }
-    },
-    getSize: () => [150, 50],
-    fileType: 'docx',
-  });
-
-  const doc = new Docxtemplater(zip, {
-    modules: [imageModule],
-    paragraphLoop: true,
-    linebreaks: true,
-  });
-
-  try {
-    const transformedData = prepareTemplateData(data);
-    doc.render(transformedData);
-  } catch (error) {
-    console.error("Docx templating error:", error);
-    throw error;
-  }
-
-  return doc.getZip().generate({ type: 'nodebuffer' });
-};
-
-const convertToPdfBuffer = (docxBuffer) => {
-  return new Promise((resolve, reject) => {
-    libre.convert(docxBuffer, '.pdf', undefined, (err, done) => {
-      if (err) return reject(err);
-      resolve(done);
-    });
-  });
-};
-
 export const printRequest = async (req, res) => {
   try {
     const { requestId } = req.body;
-
+   let flag = 1;
     const request = await Request.findById(requestId);
-    if (!request || !request.tempaltefile) {
-      return res.status(400).json({ message: 'Template file not found for the request.' });
+    if (!request || !request.datafolderPath) {
+      return res.status(400).json({ message: 'Folder path not found for the request.' });
     }
+   
+    if(request.status === 'Ready for Dispatch' && (request.actions === 'Signed'|| request.actions==='Delegated'))
+      {
+       flag =0;
+      }
+     if(flag)
+     {
+      res.status(401).json({ message: "Unauthorized Access" });
+     }
+    const folderPath = request.datafolderPath;
+    console.log("folderpath", folderPath);
 
-    const templatePath = path.resolve(request.tempaltefile);
-    if (!fs.existsSync(templatePath)) {
-      return res.status(400).json({ message: 'Template file not found at the specified path.' });
-    }
+    const files = fs.readdirSync(folderPath);
+    const pdfFiles = files.filter(file => file.endsWith('.pdf'));
 
-    const bulkData = await Bulkdata.findById(request.bulkdataId);
-    if (!bulkData || !bulkData.parsedData) {
-      return res.status(400).json({ message: 'Bulk data or parsed data not found.' });
-    }
-
-    const filteredParsedData = bulkData.parsedData.map((map) => {
-      const plainObject = Object.fromEntries(map);
-      delete plainObject.status;
-      delete plainObject.deleteFlag;
-      delete plainObject._id;
-      return plainObject;
-    });
-
-    const pdfBuffers = [];
-
-    for (const data of filteredParsedData) {
-      const filledDocxBuffer = generateDocxFromTemplate(templatePath, data);
-      const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
-      pdfBuffers.push(pdfBuffer);
+    if (pdfFiles.length === 0) {
+      return res.status(404).json({ message: 'No PDF files found in the folder.' });
     }
 
     const mergedPdf = await PDFDocument.create();
-    for (const pdfBuf of pdfBuffers) {
-      const pdf = await PDFDocument.load(pdfBuf);
+
+    for (const file of pdfFiles) {
+      const filePath = path.join(folderPath, file);
+      const fileBuffer = fs.readFileSync(filePath);
+
+      const pdf = await PDFDocument.load(fileBuffer);
       const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
-      copiedPages.forEach((page) => mergedPdf.addPage(page));
+      copiedPages.forEach(page => mergedPdf.addPage(page));
     }
 
     const finalPdf = await mergedPdf.save();
@@ -751,33 +836,26 @@ export const printRequest = async (req, res) => {
 export const downloadzip = async (req, res) => {
   try {
     const { requestId } = req.body;
-
     const request = await Request.findById(requestId);
-    if (!request || !request.tempaltefile) {
-      return res.status(400).json({ message: 'Template file not found.' });
+    if (!request || !request.datafolderPath) {
+      return res.status(400).json({ message: 'Data folder path not found.' });
     }
 
-    const templatePath = path.resolve(request.tempaltefile);
-    if (!fs.existsSync(templatePath)) {
-      return res.status(400).json({ message: 'Template not found at path.' });
+    if(request.status !== 'Ready for Dispatch' && (request.actions !== 'Signed'|| request.actions!=='Delegated'))
+    {
+      res.status(401).json({ message: "Unauthorized Access" });
+    }
+    const folderPath = request.datafolderPath;
+    
+
+    if (!fs.existsSync(folderPath)) {
+      return res.status(404).json({ message: 'Folder not found on server.' });
     }
 
-    const bulkData = await Bulkdata.findById(request.bulkdataId);
-    if (!bulkData || !bulkData.parsedData) {
-      return res.status(400).json({ message: 'Bulk data not found.' });
-    }
+    const zipFileName = `request-${requestId}.zip`;
 
-    const filteredParsedData = bulkData.parsedData.map((entry) => {
-      const obj = Object.fromEntries(entry);
-      delete obj.status;
-      delete obj.deleteFlag;
-      delete obj._id;
-      return obj;
-    });
-
-    // Setup the zip archive
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="documents-${Date.now()}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${zipFileName}"`);
 
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.pipe(res);
@@ -788,10 +866,64 @@ export const downloadzip = async (req, res) => {
       const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
       archive.append(pdfBuffer, { name: `document-${i + 1}.pdf` });
     }
-   //
+
     archive.finalize();
   } catch (err) {
     console.error("Download ZIP error:", err);
     res.status(500).json({ message: 'Internal Server Error', error: err.message });
   }
 };
+
+export const qrverifypdf = async(req,res)=>{
+  const { bulkdataId, rowId, flag } = req.body;
+
+  try {
+    const bulk = await Bulkdata.findById(bulkdataId);
+    if (!bulk || !Array.isArray(bulk.parsedData)) {
+      return res.status(404).json({ error: "Bulk data not found or malformed." });
+    }
+
+    const rowEntry = bulk.parsedData.find((row) => {
+      try {
+        const obj = Object.fromEntries(row);
+        return obj._id?.toString() === rowId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!rowEntry) {
+      return res.status(404).json({ error: "Row data not found." });
+    } 
+
+    const rowData = Object.fromEntries(rowEntry);
+    const filepath = rowData.filepath;
+
+    if (!filepath) {
+      return res.status(404).json({ error: "File path not found in row data." });
+    }
+
+    const absolutePath = path.resolve(filepath);
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({ error: "File not found on server." });
+    }
+
+    if (flag === 1) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
+      return res.sendFile(absolutePath);
+    } else {
+      // Strip sensitive/internal fields
+      delete rowData._id;
+      delete rowData.deleteFlag;
+      delete rowData.Signature;
+      delete rowData.qrcode;
+      delete rowData.filepath;
+
+      return res.status(200).json(rowData);
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+}

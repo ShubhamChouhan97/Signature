@@ -5,8 +5,9 @@ import { resizeAndSaveImage } from '../../middleware/imageresize.js'
 import { uploadSignature,allSign,SignRequestOtpVerify,SignRequest } from '../../controller/signatureController.js';
 const router = Router();
 
-router.post('/uploadSignature',checkLoginStatus,UploadSign.single("signature"),resizeAndSaveImage,uploadSignature);
-router.get('/allSign',checkLoginStatus,allSign);
-router.post('/SignRequest',checkLoginStatus,SignRequest);
-router.post('/SignRequestOtpVerify',checkLoginStatus,SignRequestOtpVerify);
+router.post('/uploadSignature',checkLoginStatus,UploadSign.single("signature"),resizeAndSaveImage,uploadSignature); // upload signature
+router.get('/allSign',checkLoginStatus,allSign); // give all signature to user
+router.post('/SignRequest',checkLoginStatus,SignRequest); // sign the documents
+router.post('/SignRequestOtpVerify',checkLoginStatus,SignRequestOtpVerify); // verify OTP for signing documents know by pass the request
+
 export default router;
