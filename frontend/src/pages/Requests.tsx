@@ -218,7 +218,7 @@ const getActions = (req: Request) => {
       case 'Pending':
         return ['Clone'];
       case 'Signed':
-        return ['Clone','Print ALL', 'Dispatch'];
+        return ['Clone','Print ALL', 'Dispatch','Download All (ZIP)'];
         case 'Delegated':
         return ['No Action Allow'];
         case 'Rejected':

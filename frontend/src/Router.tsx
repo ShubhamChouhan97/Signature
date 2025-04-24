@@ -1,4 +1,5 @@
 import { Route, Navigate, Routes } from "react-router";
+import Qrverify from './pages/Qrveriy.tsx'
 import Login from "./pages/Login.tsx";
 import Dashboard from "./pages/Dashboard";
 import ProtectedRoute from "./components/ProtectRoute";
@@ -57,6 +58,7 @@ export function Router() {
 					</Route>
 				</Route>
 			</Route>
+			<Route path="/qrverify/:bulkdataId/:objectId" element={<Qrverify />}/>
 		</Routes>
 	);
 }

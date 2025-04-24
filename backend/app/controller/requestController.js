@@ -728,7 +728,6 @@ export const RejectRequest = async (req, res) => {
 
   if (userRole === 2) {
     try {
-      let flag = 1;
       const request = await Request.findById(requestId);
       if (!request) return res.status(404).json({ error: "Request not found." });
 
@@ -738,13 +737,9 @@ export const RejectRequest = async (req, res) => {
       }
 
       //  Action & status check
-      if (request.actions === 'Draft' && 
-          (request.status === 'Draft' || request.status === 'Waited for Signature')) {
-        flag = 0;
-      }
-
-      if (flag) {
-        return res.status(401).json({ message: "Unauthorized Access" });
+      if (request.actions !== 'Draft' && 
+          (request.status !== 'Draft' || request.status !== 'Waited for Signature')) {
+            return res.status(401).json({ message: "Unauthorized Access as" });
       }
         const bulkid = request.bulkdataId;
 
@@ -789,80 +784,6 @@ export const RejectRequest = async (req, res) => {
     return res.status(403).json({ error: "Unauthorized access" });
   }
 };
-
-const prepareTemplateData = (data) => {
-  const transformed = {};
-
-  for (const [key, value] of Object.entries(data)) {
-    let newValue = value ?? '';
-
-    // Detect image tags like Signature
-    if (key.toLowerCase().includes("Signature") && typeof newValue === "string") {
-      const absoluteSigPath = path.resolve(newValue);
-      if (fs.existsSync(absoluteSigPath)) {
-        newValue = absoluteSigPath;
-      } else {
-        console.warn(`Signature image not found at ${absoluteSigPath}`);
-        newValue = path.resolve('placeholder.jpg');
-      }
-    }
-
-    // Transform 'caseid' => 'CaseId', 'signature' => 'Signature'
-    const transformedKey = key
-      .replace(/(^\w)/, (m) => m.toUpperCase()) // Capitalize first letter
-      .replace(/(_\w)/g, (m) => m[1].toUpperCase()); // Remove underscores and capitalize next letter
-
-    transformed[transformedKey] = newValue;
-  }
-
-  return transformed;
-};
-
-
-const generateDocxFromTemplate = (templatePath, data) => {
-  const content = fs.readFileSync(templatePath, 'binary');
-  const zip = new PizZip(content);
-
-  const imageModule = new ImageModule({
-    centered: false,
-    getImage: (tagValue) => {
-      try {
-        return fs.readFileSync(tagValue); // tagValue is already a file path
-      } catch (err) {
-        console.error(`Error reading image at ${tagValue}:`, err);
-        return fs.readFileSync(path.resolve('placeholder.jpg'));
-      }
-    },
-    getSize: () => [150, 50],
-    fileType: 'docx',
-  });
-
-  const doc = new Docxtemplater(zip, {
-    modules: [imageModule],
-    paragraphLoop: true,
-    linebreaks: true,
-  });
-
-  try {
-    const transformedData = prepareTemplateData(data);
-    doc.render(transformedData);
-  } catch (error) {
-    console.error("Docx templating error:", error);
-    throw error;
-  }
-
-  return doc.getZip().generate({ type: 'nodebuffer' });
-};
-
-const convertToPdfBuffer = (docxBuffer) => {
-  return new Promise((resolve, reject) => {
-    libre.convert(docxBuffer, '.pdf', undefined, (err, done) => {
-      if (err) return reject(err);
-      resolve(done);
-    });
-  });
-};
-
 export const printRequest = async (req, res) => {
   try {
     const { requestId } = req.body;
@@ -871,8 +792,8 @@ export const printRequest = async (req, res) => {
     if (!request || !request.datafolderPath) {
       return res.status(400).json({ message: 'Folder path not found for the request.' });
     }
-
-    if(request.status === 'Signed' && (request.actions === 'Signed'|| request.actions==='Delegated'))
+  
+    if(request.status === 'Ready for Dispatch' && (request.actions === 'Signed'|| request.actions==='Delegated'))
       {
        flag =0;
       }
@@ -915,20 +836,15 @@ export const printRequest = async (req, res) => {
 export const downloadzip = async (req, res) => {
   try {
     const { requestId } = req.body;
-    let flag = 1;
     const request = await Request.findById(requestId);
     if (!request || !request.datafolderPath) {
       return res.status(400).json({ message: 'Data folder path not found.' });
     }
 
-    if(request.status === 'Signed' && (request.actions === 'Signed'|| request.actions==='Delegated'))
+    if(request.status !== 'Ready for Dispatch' && (request.actions !== 'Signed'|| request.actions!=='Delegated'))
     {
-     flag =0;
+      res.status(401).json({ message: "Unauthorized Access" });
     }
-   if(flag)
-   {
-    res.status(401).json({ message: "Unauthorized Access" });
-   }
     const folderPath = request.datafolderPath;
     
 
@@ -957,3 +873,57 @@ export const downloadzip = async (req, res) => {
     res.status(500).json({ message: 'Internal Server Error', error: err.message });
   }
 };
+
+export const qrverifypdf = async(req,res)=>{
+  const { bulkdataId, rowId, flag } = req.body;
+
+  try {
+    const bulk = await Bulkdata.findById(bulkdataId);
+    if (!bulk || !Array.isArray(bulk.parsedData)) {
+      return res.status(404).json({ error: "Bulk data not found or malformed." });
+    }
+
+    const rowEntry = bulk.parsedData.find((row) => {
+      try {
+        const obj = Object.fromEntries(row);
+        return obj._id?.toString() === rowId;
+      } catch {
+        return false;
+      }
+    });
+
+    if (!rowEntry) {
+      return res.status(404).json({ error: "Row data not found." });
+    }
+
+    const rowData = Object.fromEntries(rowEntry);
+    const filepath = rowData.filepath;
+
+    if (!filepath) {
+      return res.status(404).json({ error: "File path not found in row data." });
+    }
+
+    const absolutePath = path.resolve(filepath);
+    if (!fs.existsSync(absolutePath)) {
+      return res.status(404).json({ error: "File not found on server." });
+    }
+
+    if (flag === 1) {
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "inline; filename=preview.pdf");
+      return res.sendFile(absolutePath);
+    } else {
+      // Strip sensitive/internal fields
+      delete rowData._id;
+      delete rowData.deleteFlag;
+      delete rowData.Signature;
+      delete rowData.qrcode;
+      delete rowData.filepath;
+
+      return res.status(200).json(rowData);
+    }
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Internal Server Error" });
+  }
+}
