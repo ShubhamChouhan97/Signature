@@ -841,13 +841,16 @@ export const downloadzip = async (req, res) => {
       return res.status(400).json({ message: 'Data folder path not found.' });
     }
 
-    if(request.status !== 'Ready for Dispatch' && (request.actions !== 'Signed'|| request.actions!=='Delegated'))
-    {
-      res.status(401).json({ message: "Unauthorized Access" });
+    if (
+      request.status !== 'Ready for Dispatch' ||
+      !['Signed', 'Delegated'].includes(request.actions)
+    ) {
+      return res.status(401).json({ message: 'Unauthorized Access' });
     }
+    
     const folderPath = request.datafolderPath;
     
-
+    console.log("folder path",folderPath);
     if (!fs.existsSync(folderPath)) {
       return res.status(404).json({ message: 'Folder not found on server.' });
     }
@@ -859,14 +862,13 @@ export const downloadzip = async (req, res) => {
 
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.pipe(res);
-
-    for (let i = 0; i < filteredParsedData.length; i++) {
-      const data = filteredParsedData[i];
-      const filledDocxBuffer = generateDocxFromTemplate(templatePath, data);
-      const pdfBuffer = await convertToPdfBuffer(filledDocxBuffer);
-      archive.append(pdfBuffer, { name: `document-${i + 1}.pdf` });
+    const files = fs.readdirSync(folderPath);
+    for (const file of files) {
+      const filePath = path.join(folderPath, file);
+      if (fs.lstatSync(filePath).isFile()) {
+        archive.file(filePath, { name: file });
+      }
     }
-
     archive.finalize();
   } catch (err) {
     console.error("Download ZIP error:", err);

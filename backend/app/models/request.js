@@ -85,7 +85,7 @@ default:null,
   },
   actions: {
         type: String,
-        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected'],
+        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected','Failed'],
         default: 'Draft',
     },
     rejectReason:{

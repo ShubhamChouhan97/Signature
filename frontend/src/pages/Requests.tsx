@@ -26,7 +26,7 @@ interface Request {
   rejectedDocuments: number;
   createdAt: string;
   status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature'|'Rejected'|'Pending';
-  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' | 'Rejected' ;
+  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' | 'Rejected'| 'Failed' ;
 }
 
 type Signature = {
@@ -223,6 +223,8 @@ const getActions = (req: Request) => {
         return ['No Action Allow'];
         case 'Rejected':
           return ['No Action Allow'];
+          case 'Failed':
+            return ['Clone','Sign'];
       default:
         return [];
     }
