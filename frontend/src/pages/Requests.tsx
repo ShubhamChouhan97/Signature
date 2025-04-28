@@ -373,14 +373,53 @@ setIsOtpModalVisible(true);
  }
 
 
+// const handlePrint = async (request: Request) => {
+//   const key = 'print';
+
+//   // Show persistent loading message
+//   message.loading({ content: `Printing "${request.title}"...`, key });
+
+//   try {
+//     // Open the new window early
+//     const newWindow = window.open("", "_blank");
+
+//     if (!newWindow) {
+//       message.error({ content: "Popup blocked. Please allow popups for this site.", key });
+//       return;
+//     }
+
+//     // Send the request to get the PDF
+//     const response = await mainClient.request("POST", "/api/request/printRequest", {
+//       data: { requestId: request._id },
+//       responseType: "blob",
+//     });
+
+//     if (response.status === 200) {
+//       const blob = new Blob([response.data], { type: 'application/pdf' });
+//       const url = URL.createObjectURL(blob);
+
+//       newWindow.location.href = url;
+//       // Wait a little for the URL to load before printing
+//       newWindow.onload = () => {
+//         newWindow.focus();
+//         newWindow.print();
+//       };
+
+//       message.success({ content: 'Printing started.', key });
+//     } else {
+//       message.error({ content: 'Failed to print.', key });
+//     }
+//   } catch (error) {
+//     console.error("Print error:", error);
+//     message.error({ content: 'Server error while trying to print.', key });
+//   }
+// };
+
 const handlePrint = async (request: Request) => {
   const key = 'print';
-
-  // Show persistent loading message
   message.loading({ content: `Printing "${request.title}"...`, key });
 
   try {
-    // Open the new window early
     const newWindow = window.open("", "_blank");
 
     if (!newWindow) {
@@ -388,7 +427,6 @@ const handlePrint = async (request: Request) => {
       return;
     }
 
-    // Send the request to get the PDF
     const response = await mainClient.request("POST", "/api/request/printRequest", {
       data: { requestId: request._id },
       responseType: "blob",
@@ -398,12 +436,25 @@ const handlePrint = async (request: Request) => {
       const blob = new Blob([response.data], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
 
-      newWindow.location.href = url;
+      newWindow.document.write(`
+        <html>
+          <head>
+            <title>Print PDF</title>
+          </head>
+          <body style="margin:0">
+            <iframe id="pdfIframe" src="${url}" frameborder="0" style="width:100%;height:100vh;"></iframe>
+          </body>
+        </html>
+      `);
 
-      // Wait a little for the URL to load before printing
-      newWindow.onload = () => {
-        newWindow.focus();
-        newWindow.print();
+      newWindow.document.close();
+
+      // Wait for the iframe to load the entire PDF and then trigger print
+      const iframe = newWindow.document.getElementById('pdfIframe') as HTMLIFrameElement;
+      
+      iframe.onload = () => {
+        // Once the iframe is fully loaded, call print
+        iframe.contentWindow?.print();
       };
 
       message.success({ content: 'Printing started.', key });
@@ -765,6 +816,7 @@ const handlePrint = async (request: Request) => {
                 return false;
               }}
               accept=".doc,.docx"
+              maxCount={1} 
             >
               <Button icon={<UploadOutlined />}>Click to Upload</Button>
             </Upload>

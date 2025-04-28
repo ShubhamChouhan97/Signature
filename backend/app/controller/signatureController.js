@@ -152,7 +152,7 @@ export const SignRequest = async (req, res) => {
   const userId = req.session.userId;
   const role = req.session.role;
   const { requestId, signatureId } = req.body;
-
+  
   try {
     const courtdata = await court.findOne({ id: courtId });
     const courtName = courtdata.name;
