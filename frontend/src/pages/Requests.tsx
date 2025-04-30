@@ -587,47 +587,99 @@ const handlePrint = async (request: Request) => {
     setIsDrawerOpen(true);
   };
 
+  // const handleCreateRequest = async () => {
+  //   try {
+  //     setLoading(true);
+  //     const formDataValues = form.getFieldsValue();
+
+  //     const fileList = formDataValues.upload;
+  //     if (!fileList || fileList.length === 0) {
+  //       message.error('Please upload a .doc or .docx file.');
+  //       setLoading(false);
+  //       return;
+  //     }
+
+  //     const file = fileList[0].originFileObj;
+
+  //     const formDataToSend = new FormData();
+  //     formDataToSend.append('title', formDataValues.title);
+  //     formDataToSend.append('description', formDataValues.description);
+  //     formDataToSend.append('template', file);
+
+  //    const response = await mainClient.request(
+  //       "POST",
+  //       "api/request/redersend",
+  //       {
+  //         data: formDataToSend,
+  //         headers: {
+  //           "Content-Type": "multipart/form-data",
+  //         },
+  //       }
+  //     );
+      
+  //     if(response.status === 200) {
+  //     fetchData();
+  //     setIsDrawerOpen(false);
+  //     form.resetFields();
+  //     }else{
+  //       message.error(response.data.message || "Failed to create request.");
+  //     }
+  //   } catch (err) {
+  //     console.error("Error creating request:", err);
+  //    message.error((err as Error).message || "Failed to create request.");
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
+
+
   const handleCreateRequest = async () => {
     try {
       setLoading(true);
       const formDataValues = form.getFieldsValue();
-
+  
       const fileList = formDataValues.upload;
       if (!fileList || fileList.length === 0) {
         message.error('Please upload a .doc or .docx file.');
-        setLoading(false);
         return;
       }
-
+  
       const file = fileList[0].originFileObj;
-
+  
       const formDataToSend = new FormData();
       formDataToSend.append('title', formDataValues.title);
       formDataToSend.append('description', formDataValues.description);
       formDataToSend.append('template', file);
-
-      await mainClient.request(
-        "POST",
-        "api/request/redersend",
-        {
-          data: formDataToSend,
-          headers: {
-            "Content-Type": "multipart/form-data",
-          },
-        }
-      );
-
-      fetchData();
-      setIsDrawerOpen(false);
-      form.resetFields();
-    } catch (err) {
+  
+      const response = await mainClient.request("POST", "api/request/redersend", {
+        data: formDataToSend,
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
+  
+      if (response.status === 200) {
+        message.success("Request created successfully");
+        fetchData();
+        setIsDrawerOpen(false);
+        form.resetFields();
+      } else {
+        message.error(response.data?.message || "Failed to create request.");
+      }
+    } catch (err: any) {
+      // Handle validation or server errors correctly
+      const serverMessage = err.response?.data?.message;
+      if (serverMessage) {
+        message.error(serverMessage);
+      } else {
+        message.error(err.message || "Failed to create request.");
+      }
       console.error("Error creating request:", err);
-     message.error("Something went wrong while creating the request.");
     } finally {
       setLoading(false);
     }
   };
-
+  
   const openrequest = (id: string) => {
     navigate(`/dashboard/request/${id}`);
   };

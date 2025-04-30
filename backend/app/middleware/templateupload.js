@@ -9,17 +9,29 @@ if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + path.extname(file.originalname);
-    cb(null, uniqueSuffix);
-  }
-});
+// const storage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     cb(null, uploadPath);
+//   },
+//   filename: (req, file, cb) => {
+//     const uniqueSuffix = Date.now() + path.extname(file.originalname);
+//     cb(null, uniqueSuffix);
+//   }
+// });
 
 // File filter to accept only Word files
+// const fileFilter = (req, file, cb) => {
+//   const allowedExtensions = ['.doc', '.docx'];
+//   const ext = path.extname(file.originalname).toLowerCase();
+//   if (allowedExtensions.includes(ext)) {
+//     cb(null, true);
+//   } else {
+//     cb(new Error('Only Word documents (.doc, .docx) are allowed!'), false);
+//   }
+// };
+
+const storage = multer.memoryStorage(); // File kept in memory
+
 const fileFilter = (req, file, cb) => {
   const allowedExtensions = ['.doc', '.docx'];
   const ext = path.extname(file.originalname).toLowerCase();

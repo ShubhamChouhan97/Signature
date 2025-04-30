@@ -16,55 +16,81 @@ import pkg from "uuid";
 const { v4: uuidv4 } = pkg;
 import { io } from '../config/socket.js';
 import os from "os";
-import signatures from '../models/signatures.js'
-import court from  '../models/courts.js'
 const unlinkAsync = promisify(fs.unlink);
 import ImageModule from "docxtemplater-image-module-free";
-import  libre  from 'libreoffice-convert';
 import { PDFDocument } from 'pdf-lib';
-import { date } from "zod";
 import archiver from 'archiver';
 
+
 const extractTags = (docxBuffer) => {
-    const zip = new PizZip(docxBuffer);
-    const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
-  
-    const tags = doc.getFullText()
-      .match(/{[^}]+}/g) || [];
-  
-    // Remove duplicates and curly braces, and filter out 'signature', 'Court', 'orcode'
-    return [...new Set(
-      tags
-        .map(tag => tag.replace(/[{}]/g, '').trim()) // Remove curly braces and trim
-        .filter(tag => tag !== 'Signature' && tag !== 'Court' && tag !== 'QR Code' && tag !== '%%signatureImage' && tag !== '%signature' && tag !== '%Signature' && tag !== 'qrCode' && tag !== 'court' ) // Exclude specific tags
-    )];
-  };
-  
+  const zip = new PizZip(docxBuffer);
+  const doc = new Docxtemplater(zip, { paragraphLoop: true, linebreaks: true });
+
+  const tags = doc.getFullText().match(/{[^}]+}/g) || [];
+
+  // Return cleaned, unique tags
+  return [...new Set(tags.map(tag => tag.replace(/[{}]/g, '').trim()))];
+};
 
 export const createRequest = async (req, res) => {
   try {
     const createdById = req.session.userId;
-    const createrRole =  req.session.role;
+    const createrRole = req.session.role;
     const { title, description } = req.body;
     const file = req.file;
 
     if (!file) {
       return res.status(400).json({ message: 'Template file is required' });
     }
-    const fileBuffer = fs.readFileSync(file.path);
-    const placeholders = extractTags(fileBuffer);
-    const request = new Request({ title, description, tempaltefile:file.path ,createdById,createrRole,placeholders});
+
+    const fileBuffer = file.buffer; // from memory
+    const allTags = extractTags(fileBuffer);
+
+    const requiredTags = ['%Signature', '%Qrcode', 'Court'];
+    const missingTags = requiredTags.filter(tag =>
+      !allTags.some(t => t.toLowerCase() === tag.toLowerCase())
+    );
+
+    if (missingTags.length > 0) {
+      return res.status(400).json({
+        message: `Template is missing required tag(s): ${missingTags.join(', ')}`
+      });
+    }
+
+    // Exclude required tags from placeholders
+    const placeholders = allTags.filter(tag =>
+      !requiredTags.some(reqTag => reqTag.toLowerCase() === tag.toLowerCase())
+    );
+
+    // Save file manually after validation
+    const uploadDir = path.join('uploads', 'templates');
+    if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+    const uniqueFileName = Date.now() + path.extname(file.originalname);
+    const filePath = path.join(uploadDir, uniqueFileName);
+    fs.writeFileSync(filePath, fileBuffer);
+
+    const request = new Request({
+      title,
+      description,
+      tempaltefile: filePath,
+      createdById,
+      createrRole,
+      placeholders
+    });
+
     await request.save();
 
     res.status(200).json({
       message: 'Request created successfully',
-      filePath: file.path
+      filePath
     });
   } catch (error) {
     console.error('Create Request Error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
+
 
 export const allrequest = async (req, res) => {
     try {
