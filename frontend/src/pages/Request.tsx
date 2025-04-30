@@ -259,23 +259,6 @@ export default function RequestPage() {
       </button>
     </>
   )}
-  {/* {["Reader", "Officer"].includes(userRole) && ["Draft"].includes(requestStatus ?? "") && (
-  <>
-    <button
-      className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
-      onClick={handleBulkUploadClick}
-    >
-      Bulk Upload (xls, csv)
-    </button>
-    <button
-      className="bg-blue-600 text-white px-4 py-2 rounded cursor-pointer"
-      onClick={downloadExcelTemplate}
-    >
-      Download Template
-    </button>
-  </>
-)} */}
-
           </div>
         </div>
 
@@ -391,13 +374,7 @@ export default function RequestPage() {
                   ) : (
                     <button
                       className="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600"
-                      // onClick={() => ReqReject(doc._id)}
-                      onClick={() => ReqReject(doc._id)}
-                      // onClick={() => {
-                      //   setSelectedRowId(doc._id);
-                      //   setIsRejectModalVisible(true);
-                      // }}
-                    >
+                      onClick={() => ReqReject(doc._id)} >
                       Reject
                     </button>
                   )}

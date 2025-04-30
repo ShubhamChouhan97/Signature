@@ -127,15 +127,6 @@ const [otp, setOtp] = useState("");
     fetchData();
   }, [loadvar]);
 
-// const fetchSign = async () => {
-//   try {
-//     const response = await mainClient.request("GET", "/api/signatures/allSign");
-//     const data = response.data;
-//     setSignatures(data.map((item: any) => `http://localhost:3000/${item.url}`)); 
-//   } catch (error) {
-//     console.error("Error fetching signatures:", error);
-//   }
-// };
 const fetchSign = async () => {
   try {
     const response = await mainClient.request("GET", "/api/signatures/allSign");
@@ -372,49 +363,6 @@ setIsOtpModalVisible(true);
 
  }
 
-
-// const handlePrint = async (request: Request) => {
-//   const key = 'print';
-
-//   // Show persistent loading message
-//   message.loading({ content: `Printing "${request.title}"...`, key });
-
-//   try {
-//     // Open the new window early
-//     const newWindow = window.open("", "_blank");
-
-//     if (!newWindow) {
-//       message.error({ content: "Popup blocked. Please allow popups for this site.", key });
-//       return;
-//     }
-
-//     // Send the request to get the PDF
-//     const response = await mainClient.request("POST", "/api/request/printRequest", {
-//       data: { requestId: request._id },
-//       responseType: "blob",
-//     });
-
-//     if (response.status === 200) {
-//       const blob = new Blob([response.data], { type: 'application/pdf' });
-//       const url = URL.createObjectURL(blob);
-
-//       newWindow.location.href = url;
-//       // Wait a little for the URL to load before printing
-//       newWindow.onload = () => {
-//         newWindow.focus();
-//         newWindow.print();
-//       };
-
-//       message.success({ content: 'Printing started.', key });
-//     } else {
-//       message.error({ content: 'Failed to print.', key });
-//     }
-//   } catch (error) {
-//     console.error("Print error:", error);
-//     message.error({ content: 'Server error while trying to print.', key });
-//   }
-// };
-
 const handlePrint = async (request: Request) => {
   const key = 'print';
   message.loading({ content: `Printing "${request.title}"...`, key });
@@ -586,53 +534,6 @@ const handlePrint = async (request: Request) => {
     form.resetFields();
     setIsDrawerOpen(true);
   };
-
-  // const handleCreateRequest = async () => {
-  //   try {
-  //     setLoading(true);
-  //     const formDataValues = form.getFieldsValue();
-
-  //     const fileList = formDataValues.upload;
-  //     if (!fileList || fileList.length === 0) {
-  //       message.error('Please upload a .doc or .docx file.');
-  //       setLoading(false);
-  //       return;
-  //     }
-
-  //     const file = fileList[0].originFileObj;
-
-  //     const formDataToSend = new FormData();
-  //     formDataToSend.append('title', formDataValues.title);
-  //     formDataToSend.append('description', formDataValues.description);
-  //     formDataToSend.append('template', file);
-
-  //    const response = await mainClient.request(
-  //       "POST",
-  //       "api/request/redersend",
-  //       {
-  //         data: formDataToSend,
-  //         headers: {
-  //           "Content-Type": "multipart/form-data",
-  //         },
-  //       }
-  //     );
-      
-  //     if(response.status === 200) {
-  //     fetchData();
-  //     setIsDrawerOpen(false);
-  //     form.resetFields();
-  //     }else{
-  //       message.error(response.data.message || "Failed to create request.");
-  //     }
-  //   } catch (err) {
-  //     console.error("Error creating request:", err);
-  //    message.error((err as Error).message || "Failed to create request.");
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
-
-
   const handleCreateRequest = async () => {
     try {
       setLoading(true);
