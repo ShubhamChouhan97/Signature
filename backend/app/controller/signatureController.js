@@ -3,14 +3,12 @@ import court from '../models/courts.js'
 import Bulkdata from '../models/bulkdata.js';
 import Request from '../models/request.js';
 import { io } from '../config/socket.js';
-import archiver from 'archiver';
 import path from 'path';
 import PizZip from 'pizzip';
 import Docxtemplater from 'docxtemplater';
 import fs from 'fs';
 import ImageModule from "docxtemplater-image-module-free";
 import  libre  from 'libreoffice-convert';
-import { PDFDocument } from 'pdf-lib';
 import QRCode from 'qrcode';
 
 

@@ -156,7 +156,6 @@ router.post(
       userObj.updatedBy = req.session.userId;
       // const password = generatePassword(10);
       const password = "123456";
-      console.log(password);
       sendNewUserEmail(userObj.email, password);
       userObj.password = await bcryptPass(password);
       userObj.courtId = courtObj.id;
