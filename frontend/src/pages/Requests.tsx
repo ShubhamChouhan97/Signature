@@ -10,7 +10,7 @@ import {
   message,
 } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
-import { mainClient, useAppStore } from "../store"; // Keep mainClient if still used directly
+import {  useAppStore } from "../store"; // Keep mainClient if still used directly
 import { useNavigate } from "react-router";
 import { rolesMap } from '../libs/statusMap';
 import { io } from 'socket.io-client';
@@ -32,7 +32,7 @@ import {
   createNewRequest,
   previewRequestTemplate,
   downloadSampleTemplate
-} from '../api/requestsApi'; // Adjust path as needed
+} from '../Api/requestsApi'; // Adjust path as needed
 
 const socket = io("http://localhost:3000", {
   withCredentials: true
@@ -243,7 +243,7 @@ const Requests: React.FC = () => {
       } else {
         message.error("Failed to clone request.");
       }
-    } catch (error) {
+    } catch {
       message.error("Failed to clone request.");
     }
   };
@@ -295,7 +295,7 @@ const Requests: React.FC = () => {
       } else {
         message.error("Failed to delete request.");
       }
-    } catch (error) {
+    } catch  {
       message.error("Failed to delete request.");
     }
   };
@@ -317,7 +317,7 @@ const Requests: React.FC = () => {
       } else {
         message.error("Failed to Sign Documents.");
       }
-    } catch (error) {
+    } catch  {
       message.error("Failed to Sign Document at server.");
     }
   }
@@ -339,8 +339,12 @@ const Requests: React.FC = () => {
       } else {
         message.error("Failed to Verify OTP.");
       }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || "Failed to Verify OTP at server.";
+    } catch (error: unknown) {
+      let errorMessage = "Failed to Verify OTP at server.";
+      if (typeof error === "object" && error !== null && "response" in error) {
+        // @ts-expect-error: response might exist on error
+        errorMessage = error.response?.data?.message || errorMessage;
+      }
       message.error(errorMessage);
     }
     setOtp('');
@@ -451,7 +455,7 @@ const Requests: React.FC = () => {
         setRejectReason("");
         setSelectedRowId(null);
       }
-    } catch (error) {
+    } catch {
       message.error("Error rejecting request.");
     }
   };
@@ -469,7 +473,7 @@ const Requests: React.FC = () => {
       } else {
         message.error("Failed to Delegate request.");
       }
-    } catch (error) {
+    } catch {
       message.error("Failed to Delegate request.");
     }
   }
@@ -532,12 +536,18 @@ const Requests: React.FC = () => {
       } else {
         message.error("Failed to create request.");
       }
-    } catch (err: any) {
-      const serverMessage = err.response?.data?.message;
+    } catch (err: unknown) {
+      let serverMessage: string | undefined;
+      if (typeof err === "object" && err !== null && "response" in err) {
+        // @ts-expect-error: response might exist on error
+        serverMessage = err.response?.data?.message;
+      }
       if (serverMessage) {
         message.error(serverMessage);
-      } else {
+      } else if (err instanceof Error) {
         message.error(err.message || "Failed to create request.");
+      } else {
+        message.error("Failed to create request.");
       }
       console.error("Error creating request:", err);
     } finally {
@@ -576,7 +586,7 @@ const Requests: React.FC = () => {
       a.download = "SampleTemplate.docx";
       a.click();
       window.URL.revokeObjectURL(url);
-    } catch (error) {
+    } catch  {
       message.error("Failed to Download request.");
     }
   }

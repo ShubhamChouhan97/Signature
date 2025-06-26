@@ -32,7 +32,7 @@ export const fetchAllRequests = async (): Promise<Request[]> => {
 export const fetchAllSignatures = async (): Promise<Signature[]> => {
   try {
     const response = await mainClient.request("GET", "/api/signatures/allSign");
-    return response.data.map((item: any) => ({
+    return response.data.map((item: { _id: string; url: string }) => ({
       _id: item._id,
       url: `http://localhost:3000/${item.url}`,
     }));
