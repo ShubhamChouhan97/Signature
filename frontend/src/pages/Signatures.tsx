@@ -1,32 +1,28 @@
-import React, { useRef, useState,useEffect } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { Modal, Button, message } from "antd";
- import { mainClient} from "../store";
-// import { MainClient } from "../client";
- 
+import { fetchSignatures, uploadSignature } from "../Api/signatureApi"; // Adjust the import path as necessary
+
 const Signatures: React.FC = () => {
-    
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
-const [loadvar,setLoadvar] = useState(false);
-const [signatures, setSignatures] = useState<string[]>([]); // URLs of the signatures
-const baseUrl = import.meta.env.VITE_BACKEND_URL;
+  const [loadvar, setLoadvar] = useState(false);
+  const [signatures, setSignatures] = useState<string[]>([]);
 
-const fetchData = async () => {
-  try {
-    const response = await mainClient.request("GET", "/api/signatures/allSign");
-    const data = response.data;
-    setSignatures(data.map((item: any) => `http://localhost:3000/${item.url}`)); 
-    setLoadvar(false);
-  } catch (error) {
-    console.error("Error fetching signatures:", error);
-  }
-};
+  const fetchData = async () => {
+    try {
+      const signatureUrls = await fetchSignatures();
+      setSignatures(signatureUrls);
+      setLoadvar(false);
+    } catch {
+      console.error("Error loading signatures");
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [loadvar]);
-
 
   const handleButtonClick = () => {
     fileInputRef.current?.click();
@@ -44,21 +40,11 @@ const fetchData = async () => {
   const handleSubmit = async () => {
     if (!selectedFile) return;
 
-    const formData = new FormData();
-    formData.append("signature", selectedFile); // "signature" should match server's expected field name
-
     try {
-      const response = await mainClient.request("POST", "/api/signatures/uploadSignature", {
-        data: formData,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-
+      const response = await uploadSignature(selectedFile);
       message.success("Signature uploaded successfully!");
       console.log("Server response:", response.data);
       setLoadvar(true);
-      // Cleanup
       setSelectedFile(null);
       setPreviewUrl(null);
       setIsModalVisible(false);
@@ -97,23 +83,22 @@ const fetchData = async () => {
       </div>
 
       <div>
-  <h3 className="text-lg font-semibold mb-2">Signature Library</h3>
-  <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
-    {signatures.map((url, index) => (
-      <div
-        key={index}
-        className="border rounded p-1 flex items-center justify-center w-64 h-64" // Fixed width & height
-      >
-        <img
-          src={url}
-          alt={`Signature ${index + 1}`}
-          className="max-h-full max-w-full object-contain"
-        />
+        <h3 className="text-lg font-semibold mb-2">Signature Library</h3>
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+          {signatures.map((url, index) => (
+            <div
+              key={index}
+              className="border rounded p-1 flex items-center justify-center w-64 h-64"
+            >
+              <img
+                src={url}
+                alt={`Signature ${index + 1}`}
+                className="max-h-full max-w-full object-contain"
+              />
+            </div>
+          ))}
+        </div>
       </div>
-    ))}
-  </div>
-</div>
-
 
       <Modal
         title="Preview Signature"
@@ -141,3 +126,4 @@ const fetchData = async () => {
 };
 
 export default Signatures;
+

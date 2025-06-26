@@ -10,14 +10,34 @@ import {
   message,
 } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
-import { mainClient, useAppStore } from "../store";
+import { mainClient, useAppStore } from "../store"; // Keep mainClient if still used directly
 import { useNavigate } from "react-router";
 import { rolesMap } from '../libs/statusMap';
 import { io } from 'socket.io-client';
+
+// Import your API functions
+import {
+  fetchAllRequests,
+  fetchAllSignatures,
+  fetchOfficerData,
+  sendRequestToOfficer,
+  cloneRequest,
+  deleteRequest,
+  signRequest,
+  verifySignRequestOtp,
+  printRequest,
+  downloadAllDocumentsZip,
+  rejectRequest,
+  delegateRequest,
+  createNewRequest,
+  previewRequestTemplate,
+  downloadSampleTemplate
+} from '../api/requestsApi'; // Adjust path as needed
+
 const socket = io("http://localhost:3000", {
   withCredentials: true
 });
-// add 
+// add
 interface Request {
   rejectReason: string;
   _id: string;
@@ -25,8 +45,8 @@ interface Request {
   numberOfDocuments: number;
   rejectedDocuments: number;
   createdAt: string;
-  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature'|'Rejected'|'Pending';
-  actions:'Draft' | 'Pending'| 'Signed'| 'Submited' | 'Delegated' | 'Rejected'| 'Failed' ;
+  status: 'Draft' | 'Delegated' | 'Ready for Dispatch' | 'Waited for Signature' | 'Rejected' | 'Pending';
+  actions: 'Draft' | 'Pending' | 'Signed' | 'Submited' | 'Delegated' | 'Rejected' | 'Failed';
 }
 
 type Signature = {
@@ -42,8 +62,8 @@ const actionButtonColors: Record<string, string> = {
   'Download All (ZIP)': 'bg-purple-600 hover:bg-purple-700 text-white',
   Dispatch: 'bg-green-400 hover:bg-green-700 text-white',
   Delegate: 'bg-cyan-600 hover:bg-cyan-700 text-white',
-  "No Action Allow" :'bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600',
-  Reject:'bg-red-600 hover:bg-red-700 text-white',
+  "No Action Allow": 'bg-red-400 text-white px-3 py-1 rounded hover:bg-red-600',
+  Reject: 'bg-red-600 hover:bg-red-700 text-white',
 };
 
 const Requests: React.FC = () => {
@@ -53,186 +73,169 @@ const Requests: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [form] = Form.useForm();
   const [requestdata, setRequest] = useState<Request[]>([]);
-  const [loadvar,setLoadvar] = useState(0);
-  // officer data 
+  const [loadvar, setLoadvar] = useState(0);
+  // officer data
   const [officerData, setOfficerData] = useState<{ label: string, value: string }[]>([]); // Officer data state
-  
+
   // rejected modal
   const [isRejectModalVisible, setIsRejectModalVisible] = useState(false);
-const [rejectReason, setRejectReason] = useState("");
-const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
 
-// send for signature 
+  // send for signature
   const [isSignatureModalVisible, setIsSignatureModalVisible] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<Request | null>(null);
   const [selectedOfficer, setselectedOfficer] = useState<string | undefined>();
   const [searchUser, setSearchUser] = useState('');
   const [selectedSignature, setSelectedSignature] = useState<Signature | null>(null);
 
-// Otp Modal 
-const [isOtpModalVisible, setIsOtpModalVisible] = useState(false);
-const [otp, setOtp] = useState("");
+  // Otp Modal
+  const [isOtpModalVisible, setIsOtpModalVisible] = useState(false);
+  const [otp, setOtp] = useState("");
 
-  // Request Clone 
+  // Request Clone
   const [isCloneModalVisible, setIsCloneModalVisible] = useState(false);
   const [cloningRequest, setCloningRequest] = useState<Request | null>(null);
   const [clonedTitle, setClonedTitle] = useState('');
 
   // Signature
   const [signatures, setSignatures] = useState<Signature[]>([]);
-  const [signRequest ,setSignRequest] =useState<Request | null>(null);
+  const [signRequestData, setSignRequestData] = useState<Request | null>(null);
   const [issSignModalVisible, setIsSignModalVisible] = useState(false);
-// user Deatils
-      const session = useAppStore().session;
-      const myId=useAppStore().session?.userId;
-  const userRole  = session?.role === 2 ?rolesMap[2] : session?.role === 3 ? rolesMap[3]:null;
+  // user Deatils
+  const session = useAppStore().session;
+  const myId = useAppStore().session?.userId;
+  const userRole = session?.role === 2 ? rolesMap[2] : session?.role === 3 ? rolesMap[3] : null;
 
-  // socket 
+  // socket
   useEffect(() => {
     socket.on('request-officer', (data) => {
-      if(myId === data.officerId){
-        setLoadvar((prev)=>prev+1);
-     }
+      if (myId === data.officerId) {
+        setLoadvar((prev) => prev + 1);
+      }
     });
 
     return () => {
       socket.off('request-officer');
     };
-  }, []);
+  }, [myId]); // Added myId to dependency array
 
   useEffect(() => {
     socket.on('request-reader', (data) => {
-      if(myId === data.readerId){
-        setLoadvar((prev)=>prev+1);
-     }
+      if (myId === data.readerId) {
+        setLoadvar((prev) => prev + 1);
+      }
     });
 
     return () => {
       socket.off('request-reader');
     };
-  }, []);
+  }, [myId]); // Added myId to dependency array
 
   const fetchData = async () => {
     try {
-      const response = await mainClient.request("GET", "/api/request/allrequest");
-      const data = Array.isArray(response.data) ? response.data : [];
+      const data = await fetchAllRequests();
       setRequest(data);
     } catch (error) {
       console.error("Error fetching requests:", error);
-    } 
+      message.error("Failed to fetch requests.");
+    }
   };
 
   useEffect(() => {
     fetchData();
   }, [loadvar]);
 
-const fetchSign = async () => {
-  try {
-    const response = await mainClient.request("GET", "/api/signatures/allSign");
-    const data = response.data;
-    setSignatures(
-      data.map((item: any) => ({
-        _id: item._id,
-        url: `http://localhost:3000/${item.url}`,
-      }))
-    );
-  } catch (error) {
-    console.error("Error fetching signatures:", error);
-  }
-};
-  // Function to get officer selection 
+  const fetchSign = async () => {
+    try {
+      const data = await fetchAllSignatures();
+      setSignatures(data);
+    } catch (error) {
+      console.error("Error fetching signatures:", error);
+      message.error("Failed to fetch signatures.");
+    }
+  };
+  // Function to get officer selection
   const handleOfficerSelectClick = async () => {
     try {
-      const response = await mainClient.request("GET", "api/users/officer");
-      const officerOptions = response.data.map((officer: { name: string, id: string }) => ({
-        label: officer.name,
-        value: officer.id,
-      }));
-  
-   setOfficerData(officerOptions); // Set the fetched officer data
+      const options = await fetchOfficerData();
+      setOfficerData(options); // Set the fetched officer data
     } catch (error) {
       console.error("Error fetching officer data:", error);
-    } 
+      message.error("Failed to load officer data.");
+    }
   }
-// function to send Request to officer
-const requestSendtoOfficer = async () => {
-  const officerName = officerData.find(officer => officer.value === selectedOfficer)?.label;
-  try {
-    const response = await mainClient.request("POST", "/api/request/send-to-officer", {
-      data: {
-        requestId: selectedRequest?._id,  // Include requestId in the request body
-        officerId: selectedOfficer,
-        officerName: officerName,
-      },
-    });
-
-    if (response.status === 200) {
-      message.success('Request sent to officer successfully!');
-      setLoadvar((prev)=>prev+1);
-    } else {
+  // function to send Request to officer
+  const requestSendtoOfficer = async () => {
+    const officerName = officerData.find(officer => officer.value === selectedOfficer)?.label;
+    if (!selectedRequest?._id || !selectedOfficer || !officerName) {
+      message.error('Missing request or officer information.');
+      return;
+    }
+    try {
+      const success = await sendRequestToOfficer(selectedRequest._id, selectedOfficer, officerName);
+      if (success) {
+        message.success('Request sent to officer successfully!');
+        setLoadvar((prev) => prev + 1);
+      } else {
+        message.error('Failed to send request to officer.');
+      }
+    } catch {
       message.error('Failed to send request to officer.');
     }
-  } catch (error) {
-    message.error('Failed to send request to officer.');
-  }
-};
+  };
 
   const filteredRequests = requestdata.filter((req) =>
     req.title.toLowerCase().includes(search.toLowerCase())
   );
-const getActions = (req: Request) => {
-  if (userRole === 'Reader') {
-    switch (req.status) {
-      case 'Draft':
-        return ['Clone', 'Send for Signature', 'Delete'];
-      case 'Delegated':
-        return ['Clone', 'Sign'];
-      case 'Ready for Dispatch':
-        return ['Clone', 'Print ALL', 'Download All (ZIP)', 'Dispatch'];
-      case 'Waited for Signature':
-        return ['Clone'];
-        case 'Rejected':
-        return ['Clone'];
-        case 'Pending':
-        return ['Clone'];
-      default:
-        return [];
-    }
-  } else {
-    // Officer actions based on officeraction
-    switch (req.actions) {
-      case 'Draft':
-        return ['Clone','Sign','Delegate','Reject'];
-      case 'Submited':
-        return['Clone','Print']
-      case 'Pending':
-        return ['Clone'];
-      case 'Signed':
-        return ['Clone','Print ALL', 'Dispatch','Download All (ZIP)'];
+  const getActions = (req: Request) => {
+    if (userRole === 'Reader') {
+      switch (req.status) {
+        case 'Draft':
+          return ['Clone', 'Send for Signature', 'Delete'];
         case 'Delegated':
-        return ['No Action Allow'];
+          return ['Clone', 'Sign'];
+        case 'Ready for Dispatch':
+          return ['Clone', 'Print ALL', 'Download All (ZIP)', 'Dispatch'];
+        case 'Waited for Signature':
+          return ['Clone'];
+        case 'Rejected':
+          return ['Clone'];
+        case 'Pending':
+          return ['Clone'];
+        default:
+          return [];
+      }
+    } else {
+      // Officer actions based on officeraction
+      switch (req.actions) {
+        case 'Draft':
+          return ['Clone', 'Sign', 'Delegate', 'Reject'];
+        case 'Submited':
+          return ['Clone', 'Print']
+        case 'Pending':
+          return ['Clone'];
+        case 'Signed':
+          return ['Clone', 'Print ALL', 'Dispatch', 'Download All (ZIP)'];
+        case 'Delegated':
+          return ['No Action Allow'];
         case 'Rejected':
           return ['No Action Allow'];
-          case 'Failed':
-            return ['Clone','Sign'];
-      default:
-        return [];
+        case 'Failed':
+          return ['Clone', 'Sign'];
+        default:
+          return [];
+      }
     }
-  }
-};
+  };
   const handleCloneSubmit = async () => {
     if (!cloningRequest) return;
-  
+
     try {
-      const response = await mainClient.request("POST", "/api/request/cloneRequest", {
-        data: {
-          requestId: cloningRequest._id,
-          newTitle: clonedTitle
-        },
-      });
-  
-      if (response.status === 201) {
+      const success = await cloneRequest(cloningRequest._id, clonedTitle);
+
+      if (success) {
         setIsCloneModalVisible(false);
         setCloningRequest(null);
         setLoadvar((prev) => prev + 1);
@@ -244,20 +247,20 @@ const getActions = (req: Request) => {
       message.error("Failed to clone request.");
     }
   };
-  
+
   const handleClone = (request: Request) => {
     setCloningRequest(request);
     setClonedTitle(`${request.title}-clone`);
     setIsCloneModalVisible(true);
   };
-  
+
 
   const handleSendForSignature = (request: Request) => {
     handleOfficerSelectClick();
     setSelectedRequest(request);
 
-    if(request.numberOfDocuments === 0){
-      message.error("Please Uplaod documents to For send to officer")
+    if (request.numberOfDocuments === 0) {
+      message.error("Please Upload documents to send to officer")
       return;
     }
     setIsSignatureModalVisible(true);
@@ -265,11 +268,11 @@ const getActions = (req: Request) => {
 
   const handleSignatureSubmit = async () => {
     if (!selectedOfficer) {
-      message.error("Please select a Officer.");
+      message.error("Please select an Officer.");
       return;
     }
 
-    requestSendtoOfficer()
+    await requestSendtoOfficer()
     setIsSignatureModalVisible(false);
     setselectedOfficer(undefined);
     setSearchUser('');
@@ -280,16 +283,15 @@ const getActions = (req: Request) => {
     if (!confirmDelete) {
       return; // Exit if user clicks "Cancel"
     }
-  
+
     try {
-      const response = await mainClient.request("POST", "/api/request/deleteRequest", {
-        data: {
-          requestId: request._id, 
-          myId:myId,
-        },
-      });
-      if (response.status === 200) {
-        setLoadvar((prev)=>prev+1);
+      if (!myId) {
+        message.error("User ID not found.");
+        return;
+      }
+      const success = await deleteRequest(request._id, myId);
+      if (success) {
+        setLoadvar((prev) => prev + 1);
       } else {
         message.error("Failed to delete request.");
       }
@@ -297,91 +299,78 @@ const getActions = (req: Request) => {
       message.error("Failed to delete request.");
     }
   };
-  
-const signatureRequestSubmit = async () =>{
-  if(!signRequest){
-    return;
-  }
-  if(!selectedSignature){
-    return;
-  }
-  try {
-    const response = await mainClient.request("POST", "/api/signatures/SignRequest", {
-      data: {
-        requestId: signRequest._id, 
-        signatureId:selectedSignature._id,
-      },
-    });
-    if (response.status === 200) {
-     message.success("All Document Sign ");
-     setLoadvar((prev)=>prev+1);
-      
-    } else {
-      message.error("Failed to Sign Documents.");
-    }
-  } catch (error) {
-    message.error("Failed to Sign Document At server server.");
-  }
-}
 
-   const handleSign = async (request: Request) => {
+  const signatureRequestSubmit = async () => {
+    if (!signRequestData) {
+      message.error("No request selected for signature.");
+      return;
+    }
+    if (!selectedSignature) {
+      message.error("No signature selected.");
+      return;
+    }
+    try {
+      const success = await signRequest(signRequestData._id, selectedSignature._id);
+      if (success) {
+        message.success("All Documents Signed ");
+        setLoadvar((prev) => prev + 1);
+      } else {
+        message.error("Failed to Sign Documents.");
+      }
+    } catch (error) {
+      message.error("Failed to Sign Document at server.");
+    }
+  }
+
+  const handleSign = async (request: Request) => {
     await fetchSign();
-    setSignRequest(request);
+    setSignRequestData(request);
     setIsSignModalVisible(true);
   };
 
   const handleOtpVerified = async () => {
     try {
-      const response = await mainClient.request("POST", "/api/signatures/SignRequestOtpVerify", {
-        data: {
-          otp: otp, 
-        },
-      });
-      if (response.status === 200) {
-       message.success("Otp Verified Sigin Started ");
+      const success = await verifySignRequestOtp(otp);
+      if (success) {
+        message.success("OTP Verified, Signing Started");
         setIsOtpModalVisible(false);
-        setIsSignModalVisible(false);
+        setIsSignModalVisible(false); // Close signature selection modal too
         signatureRequestSubmit();
       } else {
         message.error("Failed to Verify OTP.");
       }
-    } catch (error) {
-      message.error("Failed to Verify OTP at server.");
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.message || "Failed to Verify OTP at server.";
+      message.error(errorMessage);
     }
     setOtp('');
   };
 
- const handleSubmitSignForOtp = async()=>{
-  if (!selectedSignature) {
-  message.warning("Please select a signature before submitting.");
-  return;
-}
-if(!signRequest){
-  return;
-}
-setIsOtpModalVisible(true);
-
- }
-
-const handlePrint = async (request: Request) => {
-  const key = 'print';
-  message.loading({ content: `Printing "${request.title}"...`, key });
-
-  try {
-    const newWindow = window.open("", "_blank");
-
-    if (!newWindow) {
-      message.error({ content: "Popup blocked. Please allow popups for this site.", key });
+  const handleSubmitSignForOtp = async () => {
+    if (!selectedSignature) {
+      message.warning("Please select a signature before submitting.");
       return;
     }
+    if (!signRequestData) {
+      message.error("No request selected for signing.");
+      return;
+    }
+    setIsOtpModalVisible(true);
+  }
 
-    const response = await mainClient.request("POST", "/api/request/printRequest", {
-      data: { requestId: request._id },
-      responseType: "blob",
-    });
+  const handlePrint = async (request: Request) => {
+    const key = 'print';
+    message.loading({ content: `Printing "${request.title}"...`, key });
 
-    if (response.status === 200) {
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+    try {
+      const newWindow = window.open("", "_blank");
+
+      if (!newWindow) {
+        message.error({ content: "Popup blocked. Please allow popups for this site.", key });
+        return;
+      }
+
+      const blob = await printRequest(request._id);
       const url = URL.createObjectURL(blob);
 
       newWindow.document.write(`
@@ -397,64 +386,47 @@ const handlePrint = async (request: Request) => {
 
       newWindow.document.close();
 
-      // Wait for the iframe to load the entire PDF and then trigger print
       const iframe = newWindow.document.getElementById('pdfIframe') as HTMLIFrameElement;
-      
+
       iframe.onload = () => {
-        // Once the iframe is fully loaded, call print
         iframe.contentWindow?.print();
       };
 
       message.success({ content: 'Printing started.', key });
-    } else {
-      message.error({ content: 'Failed to print.', key });
+    } catch (error) {
+      console.error("Print error:", error);
+      message.error({ content: 'Server error while trying to print.', key });
     }
-  } catch (error) {
-    console.error("Print error:", error);
-    message.error({ content: 'Server error while trying to print.', key });
-  }
-};
+  };
 
   const handleDownloadZip = async (request: Request) => {
     try {
       message.loading({ content: `Preparing ZIP for "${request.title}"...`, key: 'zip' });
-  
-      // Send the request ID to the backend to get the ZIP file
-      const response = await mainClient.request("POST", "/api/request/downloadzip", {
-        data: { requestId: request._id },
-        responseType: "blob", // Ensure we're receiving a Blob
-      });
-  
-      if (response.status === 200) {
-        const blob = new Blob([response.data], { type: 'application/zip' });
-  
-        // Create an object URL for the ZIP blob
-        const url = window.URL.createObjectURL(blob);
-  
-        // Create a temporary anchor element to trigger the download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `documents-${Date.now()}.zip`; // Set the file name
-        document.body.appendChild(a);
-        a.click();
-        a.remove(); // Clean up the anchor element
-  
-        message.success({ content: 'ZIP download started.', key: 'zip' });
-      } else {
-        message.error({ content: 'Failed to generate ZIP.', key: 'zip' });
-      }
+
+      const blob = await downloadAllDocumentsZip(request._id);
+
+      const url = window.URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `documents-${Date.now()}.zip`; // Set the file name
+      document.body.appendChild(a);
+      a.click();
+      a.remove(); // Clean up the anchor element
+
+      message.success({ content: 'ZIP download started.', key: 'zip' });
     } catch (error) {
       console.error("Download ZIP error:", error);
       message.error({ content: 'Server error while generating ZIP.', key: 'zip' });
     }
   };
 
-  
+
   const handleDispatch = (request: Request) => {
     alert(`Dispatch clicked for "${request.title}"`);
   };
 
-  const handleRejected = async (request :Request)=>{
+  const handleRejected = async (request: Request) => {
     setSelectedRowId(request._id);
     setIsRejectModalVisible(true);
   }
@@ -463,18 +435,16 @@ const handlePrint = async (request: Request) => {
       message.warning("Please enter a rejection reason.");
       return;
     }
-  
+    if (!selectedRowId || !myId) {
+      message.error("Missing request ID or user ID.");
+      return;
+    }
+
     try {
-      const response = await mainClient.request("POST", "/api/request/RejectRequest", {
-             data: {
-              requestId: selectedRowId, // Use request._id directly instead of selectedRequest
-              reason :rejectReason,
-              myId:myId,
-            },
-          });
-  
-      if (response.status === 200) {
-        setLoadvar((prev)=>prev+1);
+      const success = await rejectRequest(selectedRowId, rejectReason, myId);
+
+      if (success) {
+        setLoadvar((prev) => prev + 1);
         message.success("Request Rejected Successfully");
         setLoading(true);
         setIsRejectModalVisible(false);
@@ -485,17 +455,16 @@ const handlePrint = async (request: Request) => {
       message.error("Error rejecting request.");
     }
   };
-  
-  const handleDelegate =  async(request : Request)=>{
+
+  const handleDelegate = async (request: Request) => {
     try {
-      const response = await mainClient.request("POST", "/api/request/DelegateRequest", {
-        data: {
-          requestId: request._id, // Use request._id directly instead of selectedRequest
-          myId:myId,
-        },
-      });
-      if (response.status === 200) {
-        setLoadvar((prev)=>prev+1);
+      if (!myId) {
+        message.error("User ID not found.");
+        return;
+      }
+      const success = await delegateRequest(request._id, myId);
+      if (success) {
+        setLoadvar((prev) => prev + 1);
         message.success('Request Delegated Successfully')
       } else {
         message.error("Failed to Delegate request.");
@@ -521,9 +490,9 @@ const handlePrint = async (request: Request) => {
         return handleDownloadZip(request);
       case 'Dispatch':
         return handleDispatch(request);
-        case 'Delegate':
+      case 'Delegate':
         return handleDelegate(request);
-        case 'Reject':
+      case 'Reject':
         return handleRejected(request);
       default:
         console.warn(`No handler for action: ${action}`);
@@ -538,37 +507,32 @@ const handlePrint = async (request: Request) => {
     try {
       setLoading(true);
       const formDataValues = form.getFieldsValue();
-  
+
       const fileList = formDataValues.upload;
       if (!fileList || fileList.length === 0) {
         message.error('Please upload a .doc or .docx file.');
+        setLoading(false);
         return;
       }
-  
+
       const file = fileList[0].originFileObj;
-  
+
       const formDataToSend = new FormData();
       formDataToSend.append('title', formDataValues.title);
       formDataToSend.append('description', formDataValues.description);
       formDataToSend.append('template', file);
-  
-      const response = await mainClient.request("POST", "api/request/redersend", {
-        data: formDataToSend,
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      });
-  
-      if (response.status === 200) {
+
+      const success = await createNewRequest(formDataToSend);
+
+      if (success) {
         message.success("Request created successfully");
         fetchData();
         setIsDrawerOpen(false);
         form.resetFields();
       } else {
-        message.error(response.data?.message || "Failed to create request.");
+        message.error("Failed to create request.");
       }
     } catch (err: any) {
-      // Handle validation or server errors correctly
       const serverMessage = err.response?.data?.message;
       if (serverMessage) {
         message.error(serverMessage);
@@ -580,26 +544,21 @@ const handlePrint = async (request: Request) => {
       setLoading(false);
     }
   };
-  
+
   const openrequest = (id: string) => {
     navigate(`/dashboard/request/${id}`);
   };
 
   const PreviewReq = async (requestId: string): Promise<void> => {
-      const newWindow = window.open("", "_blank");
-      
-        if (!newWindow) {
-          message.error("Popup blocked! Please allow popups for this site.");
-          return;
-        }
-      
+    const newWindow = window.open("", "_blank");
+
+    if (!newWindow) {
+      message.error("Popup blocked! Please allow popups for this site.");
+      return;
+    }
+
     try {
-      const response = await mainClient.request("POST", "/api/request/templateDownload", {
-        responseType: "blob",
-        data: { requestId },
-      });
-  
-      const blob = new Blob([response.data], { type: "application/pdf" });
+      const blob = await previewRequestTemplate(requestId);
       const url = window.URL.createObjectURL(blob);
       newWindow.location.href = url;
     } catch (err) {
@@ -607,27 +566,24 @@ const handlePrint = async (request: Request) => {
       message.error("Something went wrong while opening the template.");
     }
   };
-  
-  const downloadsample = async( )=>{
+
+  const downloadsample = async () => {
     try {
-    const response = await mainClient.request("GET", "/api/templates/sampleTemplate",{
-      responseType: "blob",
-    });
-    const blob = new Blob([response.data]);
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "SampleTemplate.docx";
-    a.click();
-    window.URL.revokeObjectURL(url);
+      const blob = await downloadSampleTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "SampleTemplate.docx";
+      a.click();
+      window.URL.revokeObjectURL(url);
     } catch (error) {
       message.error("Failed to Download request.");
     }
   }
-  
+
   return (
     <div className="p-4">
-      <h2 className="text-lg font-bold mb-4">{userRole === 'Reader' ? "Reader Dashboard" :"Officer Dashboard"}</h2>
+      <h2 className="text-lg font-bold mb-4">{userRole === 'Reader' ? "Reader Dashboard" : "Officer Dashboard"}</h2>
       <div className="flex justify-between items-center mb-4">
         <input
           type="text"
@@ -662,64 +618,51 @@ const handlePrint = async (request: Request) => {
               <td className="p-2 cursor-pointer" onClick={() => openrequest(req._id)}>{req.numberOfDocuments}</td>
               <td className="p-2 cursor-pointer text-red-500" onClick={() => alert(`Rejected Docs: ${req.rejectedDocuments}`)}>{req.rejectedDocuments}</td>
               <td className="p-2">{req.createdAt}</td>
-              {/* <td className="p-2">
-                {userRole === 'Reader' ? (
-                 req.status === 'Pending' ? (
-                 <div className="flex items-center gap-2">
-                  <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
-                   Processing...
-                </div>
-               ) : (req.status )) : req.actions === 'Pending' ? (
-             <div className="flex items-center gap-2">
-             <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
-              Processing...
-             </div>) : ( req.actions)}
-             </td> */}
-             <td className="p-2">
-  {userRole === "Reader" ? (
-    req.status === "Pending" ? (
-      <div className="flex items-center gap-2">
-        <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
-        Processing...
-      </div>
-    ) : req.status === "Rejected" ? (
-      <div className="flex items-center gap-2 group relative">
-        <span className="text-red-600">Rejected</span>
-        <span className="text-blue-500">ℹ️</span>
-        <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
-          {req.rejectReason || "No reason provided"}
-        </div>
-      </div>
-    ) : (
-      req.status
-    )
-  ) : req.actions === "Pending" ? (
-    <div className="flex items-center gap-2">
-      <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
-      Processing...
-    </div>
-  ) : req.actions === "Rejected" ? (
-    <div className="flex items-center gap-2 group relative">
-      <span className="text-red-600">Rejected</span>
-      <span className="text-blue-500">ℹ️</span>
-      <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
-        {req.rejectReason || "No reason provided"}
-      </div>
-    </div>
-  ) : (
-    req.actions
-  )}
-</td>
+              <td className="p-2">
+                {userRole === "Reader" ? (
+                  req.status === "Pending" ? (
+                    <div className="flex items-center gap-2">
+                      <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+                      Processing...
+                    </div>
+                  ) : req.status === "Rejected" ? (
+                    <div className="flex items-center gap-2 group relative">
+                      <span className="text-red-600">Rejected</span>
+                      <span className="text-blue-500">ℹ️</span>
+                      <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
+                        {req.rejectReason || "No reason provided"}
+                      </div>
+                    </div>
+                  ) : (
+                    req.status
+                  )
+                ) : req.actions === "Pending" ? (
+                  <div className="flex items-center gap-2">
+                    <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+                    Processing...
+                  </div>
+                ) : req.actions === "Rejected" ? (
+                  <div className="flex items-center gap-2 group relative">
+                    <span className="text-red-600">Rejected</span>
+                    <span className="text-blue-500">ℹ️</span>
+                    <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
+                      {req.rejectReason || "No reason provided"}
+                    </div>
+                  </div>
+                ) : (
+                  req.actions
+                )}
+              </td>
 
               <td className="p-2 flex flex-wrap gap-2">
                 {getActions(req).map((action) => (
-                 <button
-                  key={action}
-                  className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
-                  onClick={() => handleClick(action, req)}
+                  <button
+                    key={action}
+                    className={`px-3 py-1 rounded text-sm ${actionButtonColors[action] || 'bg-gray-300 hover:bg-gray-400 text-black'}`}
+                    onClick={() => handleClick(action, req)}
                   >
-                 {action}
-                 </button>
+                    {action}
+                  </button>
                 ))}
               </td>
             </tr>
@@ -742,15 +685,15 @@ const handlePrint = async (request: Request) => {
           >
             <Input placeholder="Enter the request title" />
           </Form.Item>
-            <Form.Item label="Note:">
+          <Form.Item label="Note:">
             <div>
-                <p>1. Only Word files are allowed for upload.</p>
-                <p>2. The file must have field names enclosed in curly brackets <code>{'{ }'}</code>.</p>
-                <p>3. The file must include the fields <code>{'{court}'}</code>, <code>{'{qrCode}'}</code>, and <code>{'{%signature}'}</code>.</p>
-                <p>4. The signature field must be written as <code>{'{%signature}'}</code>.</p>
-                <p>5. Download Sample file a <button style={{ color: 'blue' }} onClick={downloadsample}>Click hear </button></p>
+              <p>1. Only Word files are allowed for upload.</p>
+              <p>2. The file must have field names enclosed in curly brackets <code>{'{ }'}</code>.</p>
+              <p>3. The file must include the fields <code>{'{court}'}</code>, <code>{'{qrCode}'}</code>, and <code>{'{%signature}'}</code>.</p>
+              <p>4. The signature field must be written as <code>{'{%signature}'}</code>.</p>
+              <p>5. Download Sample file a <button style={{ color: 'blue' }} onClick={downloadsample}>Click hear </button></p>
             </div>
-            </Form.Item>
+          </Form.Item>
           <Form.Item
             label="Upload Template"
             name="upload"
@@ -763,18 +706,18 @@ const handlePrint = async (request: Request) => {
                 const isDocOrDocx = file.type === 'application/msword' ||
                   file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
                 if (!isDocOrDocx) {
-                  alert('You can only upload .doc or .docx files!');
+                  message.error('You can only upload .doc or .docx files!');
                   return Upload.LIST_IGNORE;
                 }
                 return false;
               }}
               accept=".doc,.docx"
-              maxCount={1} 
+              maxCount={1}
             >
               <Button icon={<UploadOutlined />}>Click to Upload</Button>
             </Upload>
           </Form.Item>
-           
+
           <Form.Item
             label="Request Description"
             name="description"
@@ -797,137 +740,137 @@ const handlePrint = async (request: Request) => {
         onOk={handleSignatureSubmit}
         okText="Send"
       >
-<div className="mb-4">
-  <Input
-    placeholder="Search signer..."
-    value={searchUser}
-    onChange={(e) => setSearchUser(e.target.value)}
-    className="mb-3 w-full rounded border-gray-300 focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all duration-200"
-    allowClear
-  />
+        <div className="mb-4">
+          <Input
+            placeholder="Search signer..."
+            value={searchUser}
+            onChange={(e) => setSearchUser(e.target.value)}
+            className="mb-3 w-full rounded border-gray-300 focus:border-blue-500 focus:ring focus:ring-blue-200 transition-all duration-200"
+            allowClear
+          />
 
-  {searchUser && (
-    <div className="mb-3 max-h-48 overflow-y-auto border rounded-md bg-white shadow-md">
-      {officerData.filter((officer) =>
-        officer.label.toLowerCase().includes(searchUser.toLowerCase())
-      ).length > 0 ? (
-        officerData
-          .filter((officer) =>
-            officer.label.toLowerCase().includes(searchUser.toLowerCase())
-          )
-          .map((officer) => (
-            <div
-              key={officer.value}
-              className="cursor-pointer px-4 py-2 hover:bg-blue-100 border-b last:border-none transition-all"
-              onClick={() => {
-                setselectedOfficer(officer.value);
-                setSearchUser('');
-              }}
-            >
-              {officer.label}
+          {searchUser && (
+            <div className="mb-3 max-h-48 overflow-y-auto border rounded-md bg-white shadow-md">
+              {officerData.filter((officer) =>
+                officer.label.toLowerCase().includes(searchUser.toLowerCase())
+              ).length > 0 ? (
+                officerData
+                  .filter((officer) =>
+                    officer.label.toLowerCase().includes(searchUser.toLowerCase())
+                  )
+                  .map((officer) => (
+                    <div
+                      key={officer.value}
+                      className="cursor-pointer px-4 py-2 hover:bg-blue-100 border-b last:border-none transition-all"
+                      onClick={() => {
+                        setselectedOfficer(officer.value);
+                        setSearchUser('');
+                      }}
+                    >
+                      {officer.label}
+                    </div>
+                  ))
+              ) : (
+                <div className="text-gray-500 italic text-center py-2">No officer found</div>
+              )}
             </div>
-          ))
-      ) : (
-        <div className="text-gray-500 italic text-center py-2">No officer found</div>
-      )}
-    </div>
-  )}
+          )}
 
-  <Select
-    showSearch
-    placeholder="Or manually select a signer"
-    value={selectedOfficer}
-    onChange={setselectedOfficer}
-    style={{ width: '100%' }}
-    className="custom-ant-select"
-    options={officerData}
-  />
-</div>
+          <Select
+            showSearch
+            placeholder="Or manually select a signer"
+            value={selectedOfficer}
+            onChange={setselectedOfficer}
+            style={{ width: '100%' }}
+            className="custom-ant-select"
+            options={officerData}
+          />
+        </div>
 
       </Modal>
       <Modal
-  title="Clone Request"
-  open={isCloneModalVisible}
-  onCancel={() => setIsCloneModalVisible(false)}
-  onOk={handleCloneSubmit}
-  okText="Clone"
->
-  <div>
-    <label className="block mb-2 font-medium">New Request Title</label>
-    <Input
-      value={clonedTitle}
-      onChange={(e) => setClonedTitle(e.target.value)}
-      className="w-full"
-    />
-  </div>
-</Modal>
-<Modal
-  open={isOtpModalVisible}
-  onCancel={() => setIsOtpModalVisible(false)}
-  onOk={handleOtpVerified}
-  okText="Verify OTP"
-  cancelText="Cancel"
->
-  <div className="space-y-3 text-center">
-    <p className="text-lg font-medium">Enter the OTP sent to your email/phone:</p>
-    <input
-      type="text"
-      value={otp}
-      onChange={(e) => setOtp(e.target.value)}
-      placeholder="Enter OTP"
-      className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-    />
-  </div>
-</Modal>
-<Modal
-  open={issSignModalVisible}
-  onCancel={() => setIsSignModalVisible(false)}
-  onOk={async () => { await handleSubmitSignForOtp() }}
-  okText="Submit"
-  cancelText="Cancel"
->
-  {signatures.length > 0 ? (
-    <div className="flex flex-wrap gap-4 justify-center">
-      {signatures.map((signature, index) => (
-        <div
-          key={signature._id || index}
-          onClick={() => setSelectedSignature(signature)}
-          className={`border rounded p-1 flex items-center justify-center w-40 h-40 cursor-pointer ${
-            selectedSignature?._id === signature._id ? "ring-4 ring-blue-400 border-blue-500" : ""
-          }`}
-        >
-          <img
-            src={signature.url}
-            alt={`Signature ${index + 1}`}
-            className="max-h-full max-w-full object-contain"
+        title="Clone Request"
+        open={isCloneModalVisible}
+        onCancel={() => setIsCloneModalVisible(false)}
+        onOk={handleCloneSubmit}
+        okText="Clone"
+      >
+        <div>
+          <label className="block mb-2 font-medium">New Request Title</label>
+          <Input
+            value={clonedTitle}
+            onChange={(e) => setClonedTitle(e.target.value)}
+            className="w-full"
           />
         </div>
-      ))}
-    </div>
-  ) : (
-    <div className="text-center text-gray-500">No signatures available</div>
-  )}
-</Modal>
-<Modal
-  title="Reject Request"
-  open={isRejectModalVisible}
-  onCancel={() => {
-    setIsRejectModalVisible(false);
-    setRejectReason("");
-    setSelectedRowId(null);
-  }}
-  onOk={handleRejectConfirm}
-  okText="Reject"
-  okButtonProps={{ danger: true }}
->
-  <p>Please enter the reason for rejecting this request:</p>
-  <Input.TextArea
-    rows={4}
-    value={rejectReason}
-    onChange={(e) => setRejectReason(e.target.value)}
-    placeholder="Enter rejection reason..."
-  />
-</Modal>
+      </Modal>
+      <Modal
+        open={isOtpModalVisible}
+        onCancel={() => setIsOtpModalVisible(false)}
+        onOk={handleOtpVerified}
+        okText="Verify OTP"
+        cancelText="Cancel"
+      >
+        <div className="space-y-3 text-center">
+          <p className="text-lg font-medium">Enter the OTP sent to your email/phone:</p>
+          <input
+            type="text"
+            value={otp}
+            onChange={(e) => setOtp(e.target.value)}
+            placeholder="Enter OTP"
+            className="w-full px-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </Modal>
+      <Modal
+        open={issSignModalVisible}
+        onCancel={() => setIsSignModalVisible(false)}
+        onOk={async () => { await handleSubmitSignForOtp() }}
+        okText="Submit"
+        cancelText="Cancel"
+      >
+        {signatures.length > 0 ? (
+          <div className="flex flex-wrap gap-4 justify-center">
+            {signatures.map((signature, index) => (
+              <div
+                key={signature._id || index}
+                onClick={() => setSelectedSignature(signature)}
+                className={`border rounded p-1 flex items-center justify-center w-40 h-40 cursor-pointer ${
+                  selectedSignature?._id === signature._id ? "ring-4 ring-blue-400 border-blue-500" : ""
+                }`}
+              >
+                <img
+                  src={signature.url}
+                  alt={`Signature ${index + 1}`}
+                  className="max-h-full max-w-full object-contain"
+                />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-gray-500">No signatures available</div>
+        )}
+      </Modal>
+      <Modal
+        title="Reject Request"
+        open={isRejectModalVisible}
+        onCancel={() => {
+          setIsRejectModalVisible(false);
+          setRejectReason("");
+          setSelectedRowId(null);
+        }}
+        onOk={handleRejectConfirm}
+        okText="Reject"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Please enter the reason for rejecting this request:</p>
+        <Input.TextArea
+          rows={4}
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          placeholder="Enter rejection reason..."
+        />
+      </Modal>
 
 
     </div>

@@ -606,7 +606,7 @@ export const RejectRequestByOfficer = async (req, res) => {
       );
 
       if (rowIndex === -1) {
-        return res.status(404).json({ error: "Row not found." });
+        return res.status(404).json({ error: "Row not found." }); 
       }
 
       mapArray[rowIndex].set('status', 'Rejected');

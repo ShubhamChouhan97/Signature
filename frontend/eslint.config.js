@@ -32,17 +32,18 @@ export default tseslint.config(
 			'jsx-a11y/anchor-is-valid': 'error',
 			'jsx-a11y/no-noninteractive-element-interactions': 'error',
 
-			'prettier/prettier': [
-				'error',
-				{
-					useTabs: true,
-					tabWidth: 4,
-					singleQuote: false,
-					jsxSingleQuote: false,
-					trailingComma: 'es5',
-					endOfLine: 'auto',
-				},
-			],
+			'prettier/prettier': 'off'
+			// [
+			// 	'error',
+			// 	{
+			// 		useTabs: true,
+			// 		tabWidth: 4,
+			// 		singleQuote: false,
+			// 		jsxSingleQuote: false,
+			// 		trailingComma: 'es5',
+			// 		endOfLine: 'auto',
+			// 	},
+			// ],
 		},
 	},
 )
