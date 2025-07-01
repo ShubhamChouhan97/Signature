@@ -279,6 +279,15 @@ const generatePDFsAndSave = async (parsedData, request, bulkdata, requestId, rea
 
         // Update object status and file path
         obj.status = 'Signed';
+        // add sign date and time
+        obj.signDate = new Date().toLocaleString('en-US', {
+          hour: 'numeric',
+          minute: 'numeric',
+          hour12: true,
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+        });
         obj.filepath = relativeFilePath; // Save the path (relative to 'uploads')
         delete obj.qrcode; // Remove unwanted fields like qrcode
       }

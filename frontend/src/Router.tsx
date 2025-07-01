@@ -9,6 +9,7 @@ import { CourtManagement } from "./pages/CourtManagement.tsx";
 import { CourtUsers } from "./pages/CourtUsers.tsx";
 import RequestPage from "./pages/Request.tsx";
 import RedirectByRole from "./components/RedirectByRole/index.tsx";
+import RejectedDocPage from "./pages/RejectedDoc.tsx";
 import { TemplatPreview } from "./pages/TemplatePreview.tsx";
 import RoleProtectedRoute from "./components/RoleProtectedRoute.tsx/index.tsx";
 import { roles } from "./libs/constants.ts";
@@ -34,6 +35,10 @@ export function Router() {
 							<Route
 								path="request/:id"
 								element={<RequestPage />}
+							/>
+							<Route
+								path="rejectdoc/:id"
+								element={<RejectedDocPage />}
 							/>
 							<Route path="signatures" element={<Signatures />} />
 							<Route

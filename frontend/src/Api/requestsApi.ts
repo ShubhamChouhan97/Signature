@@ -252,3 +252,27 @@ export const downloadSampleTemplate = async (): Promise<Blob> => {
     throw error;
   }
 };
+// request for dispatch
+export const DispatchRequest = async (requestId: string) => {
+  try {
+    const response = await mainClient.request("POST", "/api/request/dispatchrequest", {
+      data: {
+        requestId
+      },
+    });
+    return response.status === 200;
+  } catch (error) {
+    console.error("Error rejecting request document:", error);
+    throw error;
+  }
+};
+
+export const dispatchNumberFind = async () => {
+  try {
+    const response = await mainClient.request("GET", "/api/request/dispatchnumberfind");
+    return response.data;
+  } catch (error) {
+    console.error("Error fetching dispatch number:", error);
+    throw error;
+  }
+}

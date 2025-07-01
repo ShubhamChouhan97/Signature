@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import upload from '../../middleware/templateupload.js';
 import uploadexcel from '../../middleware/exceldataupload.js';
-import { createRequest,allrequest,templateDownload,bulkUpload,tablehead,tabledata,sendtoofficer,deleteRequest,cloneRequest,templateExcelDownload,PreviewRequest,RejectRequestByOfficer,DeleteRequestReader,DelegateRequest,RejectRequest,printRequest,downloadzip,qrverifypdf} from '../../controller/requestController.js';
+import { createRequest,allrequest,templateDownload,bulkUpload,tablehead,tabledata,sendtoofficer,
+    deleteRequest,cloneRequest,templateExcelDownload,PreviewRequest,
+    RejectRequestByOfficer,DeleteRequestReader,DelegateRequest,RejectRequest,
+    printRequest,downloadzip,qrverifypdf,dispatchRequest,dispatchNumberFind} from '../../controller/requestController.js';
 import { checkLoginStatus } from '../../middleware/checkAuth.js';
 
 const router = Router();
@@ -23,5 +26,7 @@ router.post('/DelegateRequest',checkLoginStatus,DelegateRequest);// delegate req
 router.post('/RejectRequest',checkLoginStatus,RejectRequest); // reject Full request by officer
 router.post('/printRequest',checkLoginStatus,printRequest);// print all data of request 
 router.post('/downloadzip',checkLoginStatus,downloadzip); // downloadzip folder to user of request
-router.post('/qrverifypdf',qrverifypdf)
+router.post('/qrverifypdf',qrverifypdf);
+router.post('/dispatchrequest',checkLoginStatus,dispatchRequest);
+router.get('/dispatchnumberfind',checkLoginStatus,dispatchNumberFind);
 export default router;

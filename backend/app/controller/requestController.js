@@ -20,7 +20,7 @@ const unlinkAsync = promisify(fs.unlink);
 import ImageModule from "docxtemplater-image-module-free";
 import { PDFDocument } from 'pdf-lib';
 import archiver from 'archiver';
-
+import userModel from "../models/users.js";
 
 const extractTags = (docxBuffer) => {
   const zip = new PizZip(docxBuffer);
@@ -955,3 +955,39 @@ export const qrverifypdf = async(req,res)=>{
     return res.status(500).json({ message: "Internal Server Error" });
   }
 }
+
+export const dispatchRequest = async (req, res) => {
+  try {
+    const { requestId } = req.body;
+    const request = await Request.findById(requestId);
+    if (!request) {
+      return res.status(404).json({ error: "Request not found." });
+    }
+    request.status = "Dispatched";
+    request.actions = "Dispatched";
+    await request.save();
+    io.emit('request-reader', { readerId: request.createdById });
+    const officerId = request.checkofficer?.officerId; 
+    io.emit('request-officer', { officerId: officerId });
+    return res.status(200).json({ message: "Request dispatched successfully." });
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({ message: "Internal Server Error" });
+    }
+  }
+  
+  export const dispatchNumberFind = async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      // find userby userId
+      console.log("userId", userId);
+      const user = await userModel.findOne({ id: userId });
+      if (!user) {
+        return res.status(404).json({ message: "User not found" });
+      }
+      res.json({ dispatchNumber: user.dispatchNumber });
+      } catch (error) {
+        console.error(error);
+        return res.status(500).json({ message: "Internal Server Error" });
+      }
+    }

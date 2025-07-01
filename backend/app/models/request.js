@@ -76,7 +76,7 @@ default:null,
   },
   status: {
     type: String,
-    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected','Pending'],
+    enum: ['Draft','Delegated','Ready for Dispatch','Waited for Signature','Rejected','Pending', 'Dispatched'],
     default: 'Draft',
   },
   deleteFlag:{
@@ -85,7 +85,7 @@ default:null,
   },
   actions: {
         type: String,
-        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected','Failed'],
+        enum: ['Draft', 'Pending', 'Signed', 'Submited','Delegated','Rejected','Failed','Dispatch Register', 'Dispatch Slip','Dispatched'],
         default: 'Draft',
     },
     rejectReason:{
