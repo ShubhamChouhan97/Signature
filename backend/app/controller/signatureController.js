@@ -36,7 +36,7 @@ export const allSign = async (req, res) => {
     const userId = req.session.userId;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
-    const signatureList = await signatures.find({ userId });
+    const signatureList = await signatures.find({ userId ,status:1});
     res.status(200).json(signatureList);
   } catch (error) {
     console.error("Error fetching signatures:", error);
@@ -149,6 +149,21 @@ const prepareTemplateData = async (data, bulkdataId) => {
 
   return transformed;
 };
+
+export const DeleteSign = async (req,res)=>{
+   const { id } = req.body;
+   try{
+    const sign = await signatures.findById(id);
+    sign.status = 0;
+    await sign.save();
+    res.json({message: "Signature deleted successfully"});
+   }catch(error){
+    console.error(error);
+    return res.status(500).json({ message: "Error deleting signature" ,error});
+   }
+}
+
+
 export const SignRequest = async (req, res) => {
   const courtId = req.session.courtId;
   const userId = req.session.userId;
