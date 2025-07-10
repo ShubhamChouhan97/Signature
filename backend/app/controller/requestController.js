@@ -625,37 +625,95 @@ export const RejectRequestByOfficer = async (req, res) => {
   }
 };
 
-export const DeleteRequestReader = async (req,res) =>{
-  const userRole = req.session.role;
-  let flag =1;
-  if (userRole === 3) {
-    try {
-      const { requestId,rowId, bulkdataId,myId } = req.body;
+// export const DeleteRequestReader = async (req,res) =>{
+//   const userRole = req.session.role;
+//         const { requestId,rowId, bulkdataId,myId } = req.body;
+//   let flag =1;
+//   if (userRole === 3) {
+//     try {
+//       const request = await Request.findById(requestId);
+//      if(myId===request.createdById)
+//      {
+//       flag=0;
+//      }
+//      if(flag){
+//       return res.status(403).json({ error: "You are not authorized to delete this request." });
+//      }
 
-      const request = await Request.findById(requestId);
-     if(myId===request.createdById)
-     {
-      flag=0;
-     }
-     if(flag){
-      return res.status(403).json({ error: "You are not authorized to delete this request." });
-     }
-
-      if (!request) return res.status(404).json({ error: "Request not found."
-        });
-        request.numberOfDocuments--;
+//       if (!request) return res.status(404).json({ error: "Request not found."
+//         });
+//         request.numberOfDocuments--;
         
        
+//       const bulk = await Bulkdata.findById(bulkdataId);
+//       if (!bulk || !Array.isArray(bulk.parsedData)) {
+//         return res.status(404).json({ error: "Bulk data not found or malformed." });
+//       }
+
+//       const mapArray = bulk.parsedData;
+//       // console.log("array", mapArray);
+
+//       // Convert Maps to plain objects (if needed) or access using Map methods
+//       const rowIndex = mapArray.findIndex(item => 
+//         item instanceof Map && item.get('_id')?.toString() === rowId
+//       );
+
+//       if (rowIndex === -1) {
+//         return res.status(404).json({ error: "Row not found." });
+//       }
+
+//       mapArray[rowIndex].set('deleteFlag', 'true');
+
+//       bulk.markModified('parsedData'); // Tell Mongoose that a nested field has changed
+//       await bulk.save(); // Save changes
+//       await request.save();
+//       return res.status(200).json({ message: "Status updated successfully." });
+
+//     } catch (err) {
+//       console.error("Error in Request:", err);
+//       return res.status(500).json({ error: "Internal Server Error", details: err.message });
+//     }
+//   } else {
+//     return res.status(403).json({ error: "Unauthorized access" });
+//   }
+// }
+
+
+export const DeleteRequestReader = async (req, res) => {
+  const userRole = req.session.role;
+  const { requestId, rowId, bulkdataId, myId } = req.body;
+
+  if (userRole === 3) {
+    try {
+      const request = await Request.findById(requestId);
+
+      if (!request) {
+        return res.status(404).json({ error: "Request not found." });
+      }
+
+      // Allow operation only if request is in draft
+      if (request.status !== 'Draft') {
+        return res.status(400).json({ error: "Only draft requests can be modified." });
+      }
+
+      // Check if the request was created by the same user
+      if (myId !== request.createdById.toString()) {
+        return res.status(403).json({ error: "You are not authorized to delete this request." });
+      }
+
+      // Decrement number of documents
+      request.numberOfDocuments--;
+
+      // Find the bulk data
       const bulk = await Bulkdata.findById(bulkdataId);
       if (!bulk || !Array.isArray(bulk.parsedData)) {
         return res.status(404).json({ error: "Bulk data not found or malformed." });
       }
 
       const mapArray = bulk.parsedData;
-      // console.log("array", mapArray);
 
-      // Convert Maps to plain objects (if needed) or access using Map methods
-      const rowIndex = mapArray.findIndex(item => 
+      // Find the index of the row with the given ID
+      const rowIndex = mapArray.findIndex(item =>
         item instanceof Map && item.get('_id')?.toString() === rowId
       );
 
@@ -663,11 +721,14 @@ export const DeleteRequestReader = async (req,res) =>{
         return res.status(404).json({ error: "Row not found." });
       }
 
+      // Mark the row as deleted
       mapArray[rowIndex].set('deleteFlag', 'true');
 
-      bulk.markModified('parsedData'); // Tell Mongoose that a nested field has changed
-      await bulk.save(); // Save changes
+      // Mark and save changes
+      bulk.markModified('parsedData');
+      await bulk.save();
       await request.save();
+
       return res.status(200).json({ message: "Status updated successfully." });
 
     } catch (err) {
@@ -677,7 +738,8 @@ export const DeleteRequestReader = async (req,res) =>{
   } else {
     return res.status(403).json({ error: "Unauthorized access" });
   }
-}
+};
+
 
 export const DelegateRequest = async(req,res)=>{
   const { requestId,myId} = req.body;

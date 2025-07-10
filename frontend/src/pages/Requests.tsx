@@ -916,6 +916,7 @@ import {
   message,
   Dropdown, // Import Dropdown
   Space,    // Import Space for alignment
+  Spin,
 } from "antd";
 import { UploadOutlined, MenuOutlined } from "@ant-design/icons"; // Import MenuOutlined
 import { useAppStore } from "../store";
@@ -947,6 +948,8 @@ import {
 const socket = io("http://localhost:3000", {
   withCredentials: true
 });
+
+
 
 interface Request {
   rejectReason: string;
@@ -1018,6 +1021,9 @@ const Requests: React.FC = () => {
   const [signRequestData, setSignRequestData] = useState<Request | null>(null);
   const [issSignModalVisible, setIsSignModalVisible] = useState(false);
   const [selectedSignature, setSelectedSignature] = useState<Signature | null>(null);
+ const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+ const [previewModal,setPreviewModal] = useState(false);
+
 
   // user Deatils
   const session = useAppStore().session;
@@ -1420,11 +1426,11 @@ const Requests: React.FC = () => {
     try {
    //   const success = await dispatchSlip();
   
-      if (success) {
-        message.success('Dispatch slip started');
-      } else {
-        message.error('Failed to start dispatch slip');
-      }
+      // if (success) {
+      //   message.success('Dispatch slip started');
+      // } else {
+      //   message.error('Failed to start dispatch slip');
+      // }
     } catch (error) {
       message.error('Failed for dispatch slip');
     }
@@ -1524,21 +1530,36 @@ const Requests: React.FC = () => {
     }
   }
 
+  // const PreviewReq = async (requestId: string): Promise<void> => {
+  //   const newWindow = window.open("", "_blank");
+
+  //   if (!newWindow) {
+  //     message.error("Popup blocked! Please allow popups for this site.");
+  //     return;
+  //   }
+
+  //   try {
+  //     const blob = await previewRequestTemplate(requestId);
+  //     const url = window.URL.createObjectURL(blob);
+  //     newWindow.location.href = url;
+  //   } catch (err) {
+  //     console.error("Error downloading template:", err);
+  //     message.error("Something went wrong while opening the template.");
+  //   }
+  // };
+
   const PreviewReq = async (requestId: string): Promise<void> => {
-    const newWindow = window.open("", "_blank");
-
-    if (!newWindow) {
-      message.error("Popup blocked! Please allow popups for this site.");
-      return;
-    }
-
+    setPreviewModal(true);
+    setLoading(true);
     try {
       const blob = await previewRequestTemplate(requestId);
       const url = window.URL.createObjectURL(blob);
-      newWindow.location.href = url;
+      setPreviewUrl(url);
     } catch (err) {
       console.error("Error downloading template:", err);
       message.error("Something went wrong while opening the template.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1575,7 +1596,9 @@ const Requests: React.FC = () => {
         </button>
       </div>
 
-      <table className="min-w-full table-auto border-collapse">
+
+
+      {/* <table className="min-w-full table-auto border-collapse">
         <thead>
           <tr className="bg-gray-200 text-left">
             <th className="p-2">Title</th>
@@ -1650,7 +1673,109 @@ const Requests: React.FC = () => {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table> */}
+
+{/* shorted table according to creted time */}
+<table className="min-w-full table-auto border-collapse">
+  <thead>
+    <tr className="bg-gray-200 text-left">
+      <th className="p-2">Title</th>
+      <th className="p-2">No. of Documents</th>
+      <th className="p-2">Rejected Documents</th>
+      <th className="p-2">Created At</th>
+      <th className="p-2">Request Status</th>
+      <th className="p-2">Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {[...filteredRequests]
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .map((req) => (
+        <tr key={req._id} className="border-t hover:bg-gray-100">
+          <td
+            className="p-2 text-blue-600 cursor-pointer"
+            onClick={() => PreviewReq(req._id)}
+          >
+            {req.title}
+          </td>
+          <td
+            className="p-2 text-blue-600 cursor-pointer"
+            onClick={() => openrequest(req._id)}
+          >
+            {req.numberOfDocuments}
+          </td>
+          <td
+            className="p-2 cursor-pointer text-red-500"
+            onClick={() => rejecterequestdoc(req._id, req.rejectedDocuments)}
+          >
+            {req.rejectedDocuments}
+          </td>
+          <td className="p-2">
+          {new Date(req.createdAt).toLocaleString("en-US", {
+           month: "short",
+             day: "2-digit",
+           year: "numeric",
+           hour: "numeric",
+           minute: "2-digit",
+          hour12: true,
+         })}
+         </td>
+
+          <td className="p-2">
+            {userRole === "Reader" ? (
+              req.status === "Pending" ? (
+                <div className="flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+                  Processing...
+                </div>
+              ) : req.status === "Rejected" ? (
+                <div className="flex items-center gap-2 group relative">
+                  <span className="text-red-600">Rejected</span>
+                  <span className="text-blue-500">ℹ️</span>
+                  <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
+                    {req.rejectReason || "No reason provided"}
+                  </div>
+                </div>
+              ) : (
+                req.status
+              )
+            ) : req.actions === "Pending" ? (
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 border-2 border-t-transparent border-blue-500 rounded-full animate-spin"></span>
+                Processing...
+              </div>
+            ) : req.actions === "Rejected" ? (
+              <div className="flex items-center gap-2 group relative">
+                <span className="text-red-600">Rejected</span>
+                <span className="text-blue-500">ℹ️</span>
+                <div className="absolute bottom-full left-0 mb-1 hidden w-max max-w-xs rounded bg-gray-800 px-2 py-1 text-xs text-white group-hover:block z-10">
+                  {req.rejectReason || "No reason provided"}
+                </div>
+              </div>
+            ) : (
+              req.actions
+            )}
+          </td>
+          <td className="p-2">
+            <Dropdown
+              menu={{
+                items: getActions(req).map((action) => ({
+                  key: action,
+                  label: (
+                    <a onClick={() => handleClick(action, req)}>{action}</a>
+                  ),
+                })),
+              }}
+              trigger={["click"]}
+            >
+              <Button icon={<MenuOutlined />} />
+            </Dropdown>
+          </td>
+        </tr>
+      ))}
+  </tbody>
+</table>
+
 
       <Drawer
         title="Create New Signature Request"
@@ -1895,6 +2020,32 @@ const Requests: React.FC = () => {
     />
   </div>
 </Modal>
+
+<Modal
+open={previewModal}
+onCancel={() => { setPreviewModal(false); setPreviewUrl(null); }}
+title="PDF Preview"
+				footer={null}
+				width="80%"
+				centered
+				bodyStyle={{ height: "80vh", padding: 0 }}
+
+>
+{loading ? (
+  <div className="flex justify-center items-center h-[80vh]">
+    <Spin tip="Loading Preview..." size="large" />
+  </div>
+) : previewUrl ? (
+  <div className="mt-4 w-full h-[80vh] border">
+    <iframe
+      src={previewUrl}
+      title="Document Preview"
+      className="w-full h-full"
+    />
+  </div>
+) : null}
+</Modal>
+
 
     </div>
   );

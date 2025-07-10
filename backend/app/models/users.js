@@ -43,7 +43,7 @@ const schema = new mongoose.Schema({
     },
     dispatchNumber: {
         type:Number,
-        default: 0,
+        default: 1,
     },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,

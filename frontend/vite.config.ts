@@ -24,5 +24,8 @@ export default defineConfig({
 		target: "esnext",
 		minify: true,
 		outDir: "dist",
-	},
+	},server: {
+  port: 5173,
+  allowedHosts: true,
+}
 });
