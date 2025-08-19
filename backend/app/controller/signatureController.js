@@ -10,6 +10,7 @@ import fs from "fs";
 import ImageModule from "docxtemplater-image-module-free";
 import libre from "libreoffice-convert";
 import QRCode from "qrcode";
+//import pdfQueue from '../queues/pdfQueue.js'; // BullMQ Queue
 
 export const uploadSignature = async (req, res) => {
   if (!req.file) {
@@ -47,6 +48,145 @@ export const allSign = async (req, res) => {
 export const SignRequestOtpVerify = async (req, res) => {
   res.status(200).json("OTP Verified");
 };
+
+export const DeleteSign = async (req,res)=>{
+   const { id } = req.body;
+   try{
+    const sign = await signatures.findById(id);
+    sign.status = 0;
+    await sign.save();
+    res.json({message: "Signature deleted successfully"});
+   }catch(error){
+    console.error(error);
+    return res.status(500).json({ message: "Error deleting signature" ,error});
+   }
+}
+
+
+export const SignRequest = async (req, res) => {
+  const courtId = req.session.courtId;
+  const userId = req.session.userId;
+  const role = req.session.role;
+  const { requestId, signatureId } = req.body;
+
+  try {
+    const courtdata = await court.findOne({ id: courtId });
+    const courtName = courtdata.name;
+
+    const request = await Request.findById(requestId);
+    let flag = 1;
+
+    if (
+      role == 2 &&
+      request.status === "Waited for Signature" &&
+      request.actions === "Draft"
+    ) {
+      flag = 0;
+    }
+    if (
+      role == 3 &&
+      request.status === "Delegated" &&
+      request.actions === "Delegated"
+    ) {
+      flag = 0;
+    }
+
+    if (flag) return res.status(401).json({ message: "Unauthorized Access" });
+
+    const bulkdata = await Bulkdata.findById(request.bulkdataId);
+    const sign = await signatures.findById(signatureId);
+    const signature = sign.url;
+
+    // Update to pending right away (as user signed)
+    if (role == 2) {
+      request.actions = "Pending";
+    }
+    if (role == 3) {
+      request.status = "Pending";
+    }
+    await request.save();
+const updatedParsedData = bulkdata.parsedData.map((entry) => {
+      const obj = Object.fromEntries(entry);
+      if (obj.status !== "Rejected" && obj.deleteFlag !== "true") {
+        obj.Signature = signature;
+        obj.court = courtName;
+        obj.qrcode = null;
+          obj.status = 'Pending for Signature';
+      }
+      return obj;
+    });
+    bulkdata.parsedData = updatedParsedData.map((obj) => Object.entries(obj));
+    await bulkdata.save();
+
+    io.emit("request-reader", { readerId: request.createdById });
+    io.emit("request-officer", { officerId: userId });
+
+    try {
+      await generatePDFsAndSave(
+        updatedParsedData,
+        request,
+        bulkdata,
+        requestId,
+        request.createdById,
+        userId,
+        role
+      );
+
+      // If generation succeeded, update parsedData + request status
+      if (role == 2) {
+        request.actions = "Signed";
+        request.status = "Ready for Dispatch";
+      } else if (role == 3) {
+        request.status = "Ready for Dispatch";
+      }
+      await request.save();
+
+      io.emit("request-reader", { readerId: request.createdById });
+      io.emit("request-officer", { officerId: userId });
+
+      res
+        .status(200)
+        .json({ message: "Signed and PDFs generated successfully." });
+    } catch (pdfErr) {
+      try {
+        // Update request status
+        request.actions = "Failed";
+        request.status = "Failed";
+        await request.save();
+
+        // Sanitize parsedData by removing unwanted fields
+        const updatedParsedData = bulkdata.parsedData.map((entry) => {
+          const obj = Object.fromEntries(entry); // Convert [key, value] pairs to object
+
+          // Delete specified fields
+          delete obj.Signature;
+          delete obj.court;
+          delete obj.qrcode;
+          delete obj.status;
+          return Object.entries(obj); // Convert back to [key, value] pairs
+        });
+
+        // Update and save bulkdata
+        bulkdata.parsedData = updatedParsedData;
+        await bulkdata.save();
+
+        res.status(500).json({ message: "Signature generation failed." });
+      } catch (updateErr) {
+        console.error(
+          "Error while handling PDF generation failure:",
+          updateErr
+        );
+        res
+          .status(500)
+          .json({ message: "PDF generation failed, and cleanup also failed." });
+      }
+    }
+  } catch (err) {
+    console.error("SignRequest Error:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+};
+
 
 const generateDocxFromTemplate = async (templatePath, data, bulkdataId) => {
   //console.log("data",data);
@@ -150,156 +290,7 @@ const prepareTemplateData = async (data, bulkdataId) => {
   return transformed;
 };
 
-export const DeleteSign = async (req,res)=>{
-   const { id } = req.body;
-   try{
-    const sign = await signatures.findById(id);
-    sign.status = 0;
-    await sign.save();
-    res.json({message: "Signature deleted successfully"});
-   }catch(error){
-    console.error(error);
-    return res.status(500).json({ message: "Error deleting signature" ,error});
-   }
-}
-
-
-export const SignRequest = async (req, res) => {
-  const courtId = req.session.courtId;
-  const userId = req.session.userId;
-  const role = req.session.role;
-  const { requestId, signatureId } = req.body;
-
-  try {
-    const courtdata = await court.findOne({ id: courtId });
-    const courtName = courtdata.name;
-
-    const request = await Request.findById(requestId);
-    let flag = 1;
-
-    if (
-      role == 2 &&
-      request.status === "Waited for Signature" &&
-      request.actions === "Draft"
-    ) {
-      flag = 0;
-    }
-    if (
-      role == 3 &&
-      request.status === "Delegated" &&
-      request.actions === "Delegated"
-    ) {
-      flag = 0;
-    }
-
-    if (flag) return res.status(401).json({ message: "Unauthorized Access" });
-
-    const bulkdata = await Bulkdata.findById(request.bulkdataId);
-    const sign = await signatures.findById(signatureId);
-    const signature = sign.url;
-
-    // Update to pending right away (as user signed)
-    if (role == 2) {
-      request.actions = "Pending";
-    }
-    if (role == 3) {
-      request.status = "Pending";
-    }
-    await request.save();
-const updatedParsedData = bulkdata.parsedData.map((entry) => {
-      const obj = Object.fromEntries(entry);
-      if (obj.status !== "Rejected" && obj.deleteFlag !== "true") {
-        obj.Signature = signature;
-        obj.court = courtName;
-        obj.qrcode = null;
-          obj.status = 'Pending for Signature';
-      }
-      return obj;
-    });
-    bulkdata.parsedData = updatedParsedData.map((obj) => Object.entries(obj));
-    await bulkdata.save();
-
-    io.emit("request-reader", { readerId: request.createdById });
-    io.emit("request-officer", { officerId: userId });
-    // Prepare modified parsedData for generation (in-memory only for now)
-    // const updatedParsedData = bulkdata.parsedData.map((entry) => {
-    //   const obj = Object.fromEntries(entry);
-    //   if (obj.status !== "Rejected" && obj.deleteFlag !== "true") {
-    //     obj.Signature = signature;
-    //     obj.court = courtName;
-    //     obj.qrcode = null;
-    //     //  obj.status = 'Signed';
-    //   }
-    //   return obj;
-    // });
-    // bulkdata.parsedData = updatedParsedData.map((obj) => Object.entries(obj));
-    // await bulkdata.save();
-    try {
-      await generatePDFsAndSave(
-        updatedParsedData,
-        request,
-        bulkdata,
-        requestId,
-        request.createdById,
-        userId,
-        role
-      );
-
-      // If generation succeeded, update parsedData + request status
-      if (role == 2) {
-        request.actions = "Signed";
-        request.status = "Ready for Dispatch";
-      } else if (role == 3) {
-        request.status = "Ready for Dispatch";
-      }
-      await request.save();
-
-      io.emit("request-reader", { readerId: request.createdById });
-      io.emit("request-officer", { officerId: userId });
-
-      res
-        .status(200)
-        .json({ message: "Signed and PDFs generated successfully." });
-    } catch (pdfErr) {
-      try {
-        // Update request status
-        request.actions = "Failed";
-        request.status = "Failed";
-        await request.save();
-
-        // Sanitize parsedData by removing unwanted fields
-        const updatedParsedData = bulkdata.parsedData.map((entry) => {
-          const obj = Object.fromEntries(entry); // Convert [key, value] pairs to object
-
-          // Delete specified fields
-          delete obj.Signature;
-          delete obj.court;
-          delete obj.qrcode;
-          delete obj.status;
-          return Object.entries(obj); // Convert back to [key, value] pairs
-        });
-
-        // Update and save bulkdata
-        bulkdata.parsedData = updatedParsedData;
-        await bulkdata.save();
-
-        res.status(500).json({ message: "Signature generation failed." });
-      } catch (updateErr) {
-        console.error(
-          "Error while handling PDF generation failure:",
-          updateErr
-        );
-        res
-          .status(500)
-          .json({ message: "PDF generation failed, and cleanup also failed." });
-      }
-    }
-  } catch (err) {
-    console.error("SignRequest Error:", err);
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-
+ 
 const generatePDFsAndSave = async (
   parsedData,
   request,
@@ -374,6 +365,5 @@ const generatePDFsAndSave = async (
     fs.rmSync(tempDir, { recursive: true, force: true }); // Delete entire folder
     fs.mkdirSync(tempDir); // Recreate fresh temp folder
   }
-
-  // console.log("Updated Parsed Data:", updatedParsedData);
 };
+
