@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "bullmq": "^5.56.3",
+    "ioredis": "^5.6.1"
+  }
+}
